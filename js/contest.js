@@ -247,6 +247,7 @@ const Contest = (() => {
       case 'phaseWait': return startPhase(st.phaseIdx + 1);
       case 'done': return newRound();
       case 'scoreWait': return st.remote ? null : openScoreEntry();
+      case 'rankingShown': return stageEnd();
       case 'scoreShown': return st.score.idx + 1 < st.round.team.length ? scoreWait(st.score.idx + 1) : newRound();
     }
   }
@@ -508,7 +509,7 @@ const Contest = (() => {
   function newRound() {
     reset();
     const pool = waiting();
-    if (!pool.length) return stageEnd();
+    if (!pool.length) return rankingOrEnd();
     st.round = { num: S.history.length + 1, team: [], tickets: [], tcount: Math.min(F().ticketCount, deck().length), committed: false };
     buildSteps();
     startRoll(0, pool);
@@ -1112,9 +1113,7 @@ const Contest = (() => {
         </div>
         <div class="jc-name">${esc(j || `Judge ${k + 1}`)}</div>
       </div>`).join('');
-    const avg = byId('scAvg');
-    avg.className = 'avg-box';
-    avg.style.setProperty('--delay', `${F().avgDelay}s`);
+    byId('scAvg').className = 'avg-box';
     byId('scAvgVal').textContent = '?';
     byId('scPrompt').textContent = st.remote ? 'Waiting for the judges…' : 'Press any key to enter the scores';
     replay('scrScore'); show('scrScore');
@@ -1175,19 +1174,12 @@ const Contest = (() => {
       FX.burst(x, y, { count: 70, speed: [2, 9], life: [0.6, 1.4], gravity: 0.05 });
       FX.burst(x, y, { count: 16, shape: 'star', colors: FX.GOLD, speed: [1, 5], gravity: 0.02 });
       FX.shockwave(x, y, { max: card.offsetWidth * 1.3, dur: 0.6, width: 2 });
-      await wait(820);
+      await wait(k < cards.length - 1 ? 820 : 450);
     }
     if (g !== st.gen) return;
 
-    // suspense before the average
+    // the average, straight away
     const box = byId('scAvg');
-    box.classList.add('thinking');
-    const delay = F().avgDelay * 1000;
-    if (delay > 1300) setTimeout(() => { if (g === st.gen) Sound.rise(); }, delay - 900);
-    await wait(delay);
-    if (g !== st.gen) return;
-
-    box.classList.remove('thinking');
     box.classList.add('shown');
     st.score.avg = avg;
     flash(0.6);
@@ -1210,6 +1202,95 @@ const Contest = (() => {
       ? `Press any key for ${esc(next.name)}'s score`
       : waiting().length ? 'Press any key to draw the next round' : 'Press any key to finish the stage'}`;
     st.mode = 'scoreShown';
+    st.busy = false;
+  }
+
+  /* ---------------- ranking at the end of a stage ---------------- */
+  function rankingOrEnd() {
+    const s = stageNow();
+    const list = s && scoringOn() ? stageRanking(s.id) : [];
+    return list.length ? showRanking(list) : stageEnd();
+  }
+
+  async function showRanking(list) {
+    reset();
+    stepsOn(false);
+    const s = stageNow(), g = st.gen;
+    const medal = r => ['🥇', '🥈', '🥉'][r - 1] || '';
+    const photo = p => avatarFor(S.contesters.find(c => c.id === p.id) || { name: p.name });
+    const score = p => p.avg.toFixed(F().avgDecimals);
+    byId('rkLabel').textContent = `Stage ${st.stageIdx + 1} · ${s.name}`;
+    const top = list.slice(0, 3), rest = list.slice(3);
+    byId('rkPodium').innerHTML = [1, 0, 2].filter(i => top[i]).map(i => {
+      const p = top[i];
+      return `<div class="pod pl${i + 1}" data-place="${i}">
+        <div class="pod-medal">${medal(p.rank) || p.rank}</div>
+        <div class="photo-frame"><img src="${esc(photo(p))}" alt=""></div>
+        <div class="pod-name">#${p.num} ${esc(p.name)}</div>
+        <div class="pod-score">${score(p)}</div>
+        <div class="pod-block"><span>${p.rank}</span></div>
+      </div>`;
+    }).join('');
+    const rr = byId('rkRest');
+    const cols = rest.length <= 3 ? 1 : Math.min(5, Math.ceil(rest.length / 4));
+    const rows = Math.ceil(rest.length / cols) || 1;
+    rr.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    rr.style.width = `min(94vw, ${cols * 32}vw)`;
+    rr.style.setProperty('--rh', `${Math.min(5, 22 / rows).toFixed(2)}vh`);
+    rr.hidden = !rest.length;
+    // fill column by column so the order reads downwards
+    rr.style.gridAutoFlow = 'column';
+    rr.style.gridTemplateRows = `repeat(${rows}, var(--rh))`;
+    rr.innerHTML = rest.map(p => `
+      <div class="rr"><b class="rr-rank">${p.rank}</b><img src="${esc(photo(p))}" alt=""><span class="rr-name">#${p.num} ${esc(p.name)}</span><b class="rr-score">${score(p)}</b></div>`).join('');
+    byId('rkPrompt').textContent = '';
+    replay('scrRanking'); show('scrRanking');
+    FX.warpTo(0.15);
+    Sound.whoosh();
+    st.mode = 'ranking';
+    st.busy = true;
+    await wait(900);
+    if (g !== st.gen) return;
+
+    const rowsEl = $$('#rkRest .rr');
+    for (let k = rowsEl.length - 1; k >= 0; k--) {
+      rowsEl[k].classList.add('in');
+      Sound.softTick();
+      await wait(Math.max(60, Math.min(220, 2400 / rowsEl.length)));
+      if (g !== st.gen) return;
+    }
+    if (rowsEl.length) await wait(700);
+
+    for (const place of [2, 1, 0]) {
+      const el = $(`#rkPodium [data-place="${place}"]`);
+      if (!el) continue;
+      if (g !== st.gen) return;
+      el.classList.add('in');
+      const [x, y] = center(el.querySelector('.photo-frame'));
+      if (place === 0) {
+        Sound.rise();
+        await wait(500);
+        if (g !== st.gen) return;
+        flash(0.85);
+        Sound.boom(); Sound.fanfare();
+        FX.shockwave(x, y);
+        FX.shockwave(x, y, { dur: 1.4, color: '196,181,253', width: 3 });
+        FX.burst(x, y, { count: 260, speed: [3, 18], life: [0.8, 2.2], gravity: 0.05 });
+        FX.burst(x, y, { count: 90, shape: 'star', colors: FX.GOLD, speed: [1, 9], life: [1.2, 2.4], gravity: 0.015 });
+        FX.confetti(4500);
+        FX.sparkle(el.querySelector('.photo-frame'), 9000);
+        await wait(1600);
+      } else {
+        Sound.lock(); Sound.chime();
+        FX.burst(x, y, { count: 120, speed: [2, 11], gravity: 0.05 });
+        FX.shockwave(x, y, { dur: 0.8, width: 3 });
+        await wait(1300);
+      }
+    }
+    if (g !== st.gen) return;
+    const next = E().stages[st.stageIdx + 1];
+    byId('rkPrompt').innerHTML = `<span class="key">⌨</span> ${next ? `Press any key to continue` : 'Press any key to finish'}`;
+    st.mode = 'rankingShown';
     st.busy = false;
   }
 
@@ -1268,7 +1349,7 @@ const Contest = (() => {
       case 'timer': if (st.mode === 'timer' && !st.busy) timerKey(c.k); return;
       case 'redo': return redoRound();
       case 'endRound': return endRoundNow();
-      case 'endStage': return st.stageIdx >= 0 ? stageEnd() : null;
+      case 'endStage': return st.stageIdx < 0 ? null : st.mode === 'rankingShown' ? stageEnd() : rankingOrEnd();
       case 'standby': return standby();
       case 'showScore': return revealScores(c.scores || []);
       case 'resetStage': {
@@ -1304,6 +1385,8 @@ const Contest = (() => {
       case 'scoring': return `${round}Showing the scores of ${r.team[st.score.idx]?.name || ''}`;
       case 'scoreShown': return `${round}Score shown: ${r.team[st.score.idx]?.name || ''}`;
       case 'stageEnd': return `${stage}Stage complete`;
+      case 'ranking': return `${stage}Showing the ranking…`;
+      case 'rankingShown': return `${stage}Ranking on screen`;
       case 'final': return 'Final screen';
       case 'message': return 'Message on screen';
       default: return m || '';
@@ -1313,7 +1396,7 @@ const Contest = (() => {
   function status() {
     const scr = $('#screens .scr.on');
     const pr = scr ? scr.querySelector('.prompt') : null;
-    const r = st.round, tm = st.tm, p = F().phases[st.phaseIdx];
+    const r = st.round, tm = st.tm, p = st.f ? F().phases[st.phaseIdx] : null;
     return {
       mode: st.mode, busy: st.busy, label: describe(),
       prompt: pr ? pr.textContent.replace(/\s+/g, ' ').trim() : '',

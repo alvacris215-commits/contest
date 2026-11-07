@@ -479,22 +479,15 @@ const ResultsUI = {
 
   /** Each stage's people sorted by their average score. */
   renderRanking() {
-    const byStage = new Map();
-    S.history.forEach(h => histTeam(h).forEach(c => {
-      if (c.avg == null) return;
-      const key = h.stageId || h.stage || '';
-      if (!byStage.has(key)) byStage.set(key, { name: h.stage || 'Scores', people: new Map() });
-      const people = byStage.get(key).people, id = c.id || `${c.num}`;
-      const p = people.get(id) || { num: c.num, name: c.name, sum: 0, n: 0 };
-      p.sum += c.avg; p.n++;
-      people.set(id, p);
-    }));
-    const medal = i => ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
-    byId('hRank').innerHTML = [...byStage.values()].map(st => {
-      const list = [...st.people.values()].map(p => ({ ...p, avg: p.sum / p.n })).sort((a, b) => b.avg - a.avg);
+    const stages = new Map();
+    S.history.forEach(h => { if (!stages.has(h.stageId || '')) stages.set(h.stageId || '', h.stage || 'Scores'); });
+    const medal = r => ['🥇', '🥈', '🥉'][r - 1] || `${r}.`;
+    byId('hRank').innerHTML = [...stages].map(([id, name]) => {
+      const list = stageRanking(id);
+      if (!list.length) return '';
       return `<div class="panel rank-panel">
-        <h2>🏅 Ranking · ${esc(st.name)}</h2>
-        <ol class="rank">${list.map((p, i) => `<li><span class="rk">${medal(i)}</span><span class="rn">#${p.num} ${esc(p.name)}</span><b>${p.avg.toFixed(2)}</b></li>`).join('')}</ol>
+        <h2>🏅 Ranking · ${esc(name)}</h2>
+        <ol class="rank">${list.map(p => `<li><span class="rk">${medal(p.rank)}</span><span class="rn">#${p.num} ${esc(p.name)}</span><b>${p.avg.toFixed(2)}</b></li>`).join('')}</ol>
       </div>`;
     }).join('');
   },

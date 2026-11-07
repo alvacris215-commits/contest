@@ -65,9 +65,11 @@ In the console:
 
 ### Scoring
 
-Set the judges' names in **🗂 Structure → Judges** (three by default) and scoring options in **🧩 Format → Scoring** (on/off, highest score, seconds of suspense before the average, decimals).
+Set the judges' names in **🗂 Structure → Judges** (three by default) and scoring options in **🧩 Format → Scoring** (on/off, highest score, decimals).
 
-After a round's timers, the audience screen shows the first person's photo and name with a hidden card for each judge. In the console, type each judge's score (Enter moves to the next box) and click **Show the score**. On the audience screen the judges' cards flip one by one, a bar fills while the average is "calculated", then the average appears. Press **Next** for the partner, who is scored the same way. After the last person, the next key press starts the next round's draw, so the partner stops the spinner for the next first contester.
+After a round's timers, the audience screen shows the first person's photo and name with a hidden card for each judge. In the console, type each judge's score (Enter moves to the next box) and click **Show the score**. On the audience screen the judges' cards flip one by one, then the average appears straight away. Press **Next** for the partner, who is scored the same way. After the last person, the next key press starts the next round's draw, so the partner stops the spinner for the next first contester.
+
+When everyone in a stage has presented (or you click **End this stage**), the audience sees the **ranking**: places 4 and below appear from the bottom up, then the podium for 3rd, 2nd and 1st. The next key shows the "stage complete" screen.
 
 Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. In one-screen mode, press a key on the waiting screen to open a small score form.
 

@@ -260,11 +260,10 @@
 
       <div class="panel">
         <h2>5 · Scoring</h2>
-        <p class="hint">After the timers, each person is scored by the judges set in the Structure tab. After the last person's score, the next key press draws the next round.</p>
+        <p class="hint">After the timers, each person is scored by the judges set in the Structure tab. After the last person's score, the next key press draws the next round. When everyone in the stage has presented, the ranking is shown.</p>
         <div class="settings-grid">
           <label class="check"><input type="checkbox" data-fmt="scoring"> Score each person after the round</label>
           <label>Highest possible score<input type="number" min="1" max="1000" step="any" data-fmt="scoreMax"></label>
-          <label>Seconds of suspense before the average appears<input type="number" min="0" max="60" data-fmt="avgDelay"></label>
           <label>Decimals in the average<input type="number" min="0" max="3" data-fmt="avgDecimals"></label>
         </div>
       </div>
@@ -578,10 +577,17 @@
       <div class="avg-box" id="scAvg">
         <small>Average</small>
         <b id="scAvgVal">?</b>
-        <div class="avg-bar"><i></i></div>
-        <span class="avg-calc">Calculating the average…</span>
       </div>
       <div class="prompt" id="scPrompt"></div>
+    </section>
+
+    <!-- ranking at the end of a stage -->
+    <section class="scr" id="scrRanking">
+      <div class="round-label" id="rkLabel"></div>
+      <h2 class="scr-title">Ranking</h2>
+      <div class="podium" id="rkPodium"></div>
+      <div class="rank-rest" id="rkRest"></div>
+      <div class="prompt" id="rkPrompt"></div>
     </section>
 
     <!-- round done -->

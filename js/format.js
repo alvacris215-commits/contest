@@ -28,7 +28,6 @@ const FORMAT_DEFAULTS = {
   beepLast: 5,
   scoring: true,
   scoreMax: 10,
-  avgDelay: 5,
   avgDecimals: 2,
 };
 const MAX_TEAM = 6, MAX_TICKETS = 10;
@@ -116,7 +115,6 @@ function normalizeFormat(f = {}) {
   for (const k of ['name', 'title', 'subtitle', 'roundLabel', 'doneTitle', 'teamTitle', 'ticketLabel', 'ticketTitle']) o[k] = String(o[k]);
   for (const k of ['showSteps', 'fillFromDone', 'uniqueTickets', 'autoAdvance', 'scoring']) o[k] = !!o[k];
   o.scoreMax = Math.max(1, Math.min(1000, Number(o.scoreMax) || 10));
-  o.avgDelay = clampInt(o.avgDelay, 0, 60, 5);
   o.avgDecimals = clampInt(o.avgDecimals, 0, 3, 2);
   o.teamSize = clampInt(o.teamSize, 1, MAX_TEAM, 2);
   o.ticketCount = clampInt(o.ticketCount, 0, MAX_TICKETS, 1);

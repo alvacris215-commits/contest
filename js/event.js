@@ -96,6 +96,24 @@ function stageFacts(stage) {
 /** Tickets a stage can draw: its own tickets plus tickets for all stages. */
 const stageDeck = stage => S.tickets.filter(t => !t.stageId || (stage && t.stageId === stage.id));
 
+/** People of one stage sorted by their average score (ties share a place). */
+function stageRanking(stageId) {
+  const people = new Map();
+  S.history.forEach(h => {
+    if ((h.stageId || '') !== (stageId || '')) return;
+    histTeam(h).forEach(c => {
+      if (c.avg == null) return;
+      const key = c.id || `#${c.num}`;
+      const p = people.get(key) || { id: c.id, num: c.num, name: c.name, sum: 0, n: 0 };
+      p.sum += c.avg; p.n++;
+      people.set(key, p);
+    });
+  });
+  const list = [...people.values()].map(p => ({ ...p, avg: p.sum / p.n })).sort((a, b) => b.avg - a.avg);
+  list.forEach((p, i) => { p.rank = i > 0 && Math.abs(p.avg - list[i - 1].avg) < 1e-9 ? list[i - 1].rank : i + 1; });
+  return list;
+}
+
 /** Per-stage "presented" marks. */
 const isDone = (c, stageId = S.activeStage) => !!(c.done && c.done[stageId]);
 function setDone(c, v, stageId = S.activeStage) {
