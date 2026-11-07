@@ -8,7 +8,7 @@ Open `index.html` in **Google Chrome** or **Microsoft Edge**. Double-clicking th
 | --- | --- |
 | 🗂 Structure | The contest title and its stages (see below). |
 | 👥 Contesters | Register people with an ID number, a name and a photo. To add many at once, select several photos; each file name becomes the person's name. "Status in" shows who has presented in each stage. |
-| 🎟 Tickets / Problems | Create problems as an image, as text, or as image + text. Tick the stages that can draw each ticket: in the form, or with the numbered buttons on each ticket card. Above the list, pick a stage and use **Tick all for this stage** / **Untick all**. "Used" is tracked per stage, so a ticket used in stage 1 can still be drawn in stage 2. |
+| 🎟 Tickets / Problems | Create problems as an image, as text, or as image + text. Tick the stages that can draw each ticket: in the form, or with the numbered buttons on each ticket card. Above the list, pick a stage and use **Tick all for this stage** / **Untick all**. "Used" is tracked per stage, so a ticket used in stage 1 can still be drawn in stage 2. Add **adjectives** to a ticket (separated by commas or new lines) and they appear under the picture on stage as soon as the round's timer starts. |
 | 🧩 Format | How a round with draws works: people per round, tickets, timers. Save formats as templates (see below). |
 | 🏆 Rounds | History of each round: stage, people and tickets. Export it as CSV. |
 | ⚙ Settings | Sound, fullscreen, the pause before a reveal, and backup export/import. |

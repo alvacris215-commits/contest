@@ -36,6 +36,22 @@ function ticketHTML(t) {
   </div>`;
 }
 
+/** "bright, busy\nquiet" → ['bright', 'busy', 'quiet'] (trimmed, no blanks or repeats). */
+function parseWords(s) {
+  const seen = new Set();
+  return String(s || '').split(/[,;\n]+/).map(w => w.trim()).filter(w => {
+    const k = w.toLowerCase();
+    if (!w || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** A ticket's adjectives as a row of chips (dashboard and stage). */
+function wordsHTML(words) {
+  return `<div class="words">${(words || []).map((w, i) => `<span style="--i:${i}">${esc(w)}</span>`).join('')}</div>`;
+}
+
 /* ============================ Contesters ============================ */
 const ContestersUI = {
   editing: null,
@@ -222,7 +238,7 @@ const TicketsUI = {
     byId('tRemoveImg').onclick = () => { this.image = ''; this.showImage(); };
     byId('tSave').onclick = () => this.save();
     byId('tCancel').onclick = () => this.resetForm();
-    ['tNum', 'tTitle', 'tType', 'tText', 'tSize', 'tAlign', 'tFg', 'tBg'].forEach(id => {
+    ['tNum', 'tTitle', 'tType', 'tText', 'tWords', 'tSize', 'tAlign', 'tFg', 'tBg'].forEach(id => {
       byId(id).addEventListener('input', () => { this.updateFields(); this.preview(); });
     });
     byId('tBulkBtn').onclick = () => byId('tBulk').click();
@@ -290,6 +306,7 @@ const TicketsUI = {
       title: byId('tTitle').value.trim(),
       type: byId('tType').value,
       text: byId('tText').value,
+      words: parseWords(byId('tWords').value),
       size: byId('tSize').value,
       align: byId('tAlign').value,
       fg: byId('tFg').value,
@@ -305,7 +322,11 @@ const TicketsUI = {
     $$('.t-text-field').forEach(el => { el.hidden = type === 'image'; });
   },
 
-  preview() { byId('tPreview').innerHTML = ticketHTML(this.form()); },
+  preview() {
+    const f = this.form();
+    byId('tPreview').innerHTML = ticketHTML(f);
+    byId('tPreviewWords').innerHTML = f.words.length ? wordsHTML(f.words) : '';
+  },
 
   resetForm() {
     this.editing = null;
@@ -313,6 +334,7 @@ const TicketsUI = {
     byId('tNum').value = this.nextNum();
     byId('tTitle').value = '';
     byId('tText').value = '';
+    byId('tWords').value = '';
     byId('tType').value = 'image';
     byId('tSize').value = 'l';
     byId('tAlign').value = 'center';
@@ -353,6 +375,7 @@ const TicketsUI = {
     byId('tTitle').value = t.title || '';
     byId('tType').value = t.type || 'image';
     byId('tText').value = t.text || '';
+    byId('tWords').value = (t.words || []).join(', ');
     byId('tSize').value = t.size || 'l';
     byId('tAlign').value = t.align || 'center';
     byId('tFg').value = t.fg || '#ffffff';
@@ -401,7 +424,7 @@ const TicketsUI = {
     for (const f of files) {
       try {
         const t = {
-          id: uid(), num: n++, title: '', type: 'image', text: '', size: 'l', align: 'center',
+          id: uid(), num: n++, title: '', type: 'image', text: '', words: [], size: 'l', align: 'center',
           fg: '#ffffff', bg: '#140f33', image: await fileToDataURL(f, 2000, 0.9), usedIn: {}, created: Date.now(), stages: this.checkedStages(),
         };
         await DB.put('tickets', t);
@@ -446,6 +469,7 @@ const TicketsUI = {
           <span class="t-label">${esc(t.title || (t.type === 'text' ? (t.text || '').slice(0, 40) : 'Image'))}</span>
           ${here ? `<span class="badge ${used ? 'done' : 'wait'}">${used ? 'Used' : 'In deck'}</span>` : '<span class="badge done">Not in this stage</span>'}
         </div>
+        ${(t.words || []).length ? `<div class="t-words" title="${esc(t.words.join(', '))}">${wordsHTML(t.words)}</div>` : ''}
         <div class="t-stagepills" title="Click a number to tick or untick this ticket for that stage">
           <span class="muted small">Stages</span>
           ${stages.map((s, i) => {

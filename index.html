@@ -135,6 +135,10 @@
               <textarea id="tText" rows="4" placeholder="The problem text…"></textarea>
             </label>
 
+            <label>Adjectives (optional) <span class="muted small">shown on stage while the round runs · separate with commas or new lines</span>
+              <textarea id="tWords" rows="2" placeholder="e.g. bright, crowded, peaceful, colourful"></textarea>
+            </label>
+
             <div class="field-grid t-style">
               <label class="t-text-field">Text size
                 <select id="tSize">
@@ -169,6 +173,7 @@
             </div>
             <div class="muted small">Live preview</div>
             <div class="t-preview" id="tPreview"></div>
+            <div class="t-words" id="tPreviewWords"></div>
           </div>
         </div>
       </div>
@@ -543,6 +548,7 @@
     <section class="scr" id="scrTimer">
       <div class="timer-layout">
         <div class="tm-problem" id="tmProblem"></div>
+        <div class="tm-words" id="tmWords" hidden></div>
         <div class="tm-side">
           <div class="team-chips" id="tmTeam"></div>
           <div class="tm-phase" id="tmPhase"></div>

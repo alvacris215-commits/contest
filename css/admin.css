@@ -440,3 +440,9 @@ body.consoling #app { display: none; }
 .sp.on { border-style: solid; border-color: rgba(52, 211, 153, .6); background: rgba(52, 211, 153, .16); color: #6ee7b7; }
 .sp.cur { box-shadow: 0 0 0 2px rgba(245, 196, 81, .55); }
 .t-card.not-here .t-thumb { opacity: .4; }
+
+/* ---------- ticket adjectives ---------- */
+.t-words .words { display: flex; flex-wrap: wrap; gap: 5px; }
+.t-card .t-words { padding: 0 12px 10px; }
+.t-card .t-words .words { max-height: 54px; overflow: hidden; }
+.t-words .words span { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; color: var(--gold); background: rgba(245, 196, 81, .1); border: 1px solid rgba(245, 196, 81, .35); }

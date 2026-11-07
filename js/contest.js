@@ -976,6 +976,12 @@ const Contest = (() => {
       prob.innerHTML = shown.length ? ticketHTML(shown[0]) : '';
     }
     prob.hidden = !shown.length;
+    const words = parseWords(shown.flatMap(t => t.words || []).join('\n'));
+    const wEl = byId('tmWords');
+    wEl.hidden = !words.length;
+    wEl.classList.toggle('many', words.length > 10);
+    wEl.innerHTML = words.length ? `<div class="tm-words-label">✦ Adjectives ✦</div>${wordsHTML(words)}` : '';
+    byId('scrTimer').classList.toggle('has-words', words.length > 0);
     byId('scrTimer').classList.toggle('no-problem', !shown.length);
     byId('tmTeam').innerHTML = teamChips();
     FX.stopEmitters();
