@@ -1,29 +1,23 @@
 'use strict';
 
+/** Settings for this computer's stage. Everything about how a round works lives in the format (format.js). */
 const DEFAULT_SETTINGS = {
-  title: 'Image Description Contest',
-  subtitle: '',
   sound: true,
-  uniqueTickets: true,
-  autoAdvance: true,
-  autoDelay: 5,
   revealDelay: 1000,
-  warnAt: 30,
-  dangerAt: 10,
-  beepLast: 5,
   autoFullscreen: true,
 };
-const DEFAULT_PHASES = [
-  { id: 'p1', name: 'Preparing', sec: 60, color: '#38bdf8' },
-  { id: 'p2', name: 'Presenting', sec: 120, color: '#f5c451' },
-];
 
 /** In-memory state (mirrored to IndexedDB). */
-const S = { contesters: [], tickets: [], settings: { ...DEFAULT_SETTINGS }, phases: [], history: [] };
+const S = { contesters: [], tickets: [], settings: { ...DEFAULT_SETTINGS }, format: null, templates: [], history: [], event: null, activeStage: '' };
 
-const waiting = () => S.contesters.filter(c => c.status !== 'done');
+/** Contesters who have not presented yet in the active stage. */
+const waiting = () => S.contesters.filter(c => !isDone(c));
+const saveEvent = () => DB.set('event', S.event);
+const saveActiveStage = () => DB.set('activeStage', S.activeStage);
 const saveSettings = () => DB.set('settings', S.settings);
-const savePhases = () => DB.set('phases', S.phases);
+const saveFormat = () => DB.set('format', S.format);
+const saveTemplates = () => DB.set('templates', S.templates);
+const pickSettings = (o = {}) => Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(k => [k, o[k] ?? DEFAULT_SETTINGS[k]]));
 const sortAll = () => {
   S.contesters.sort((a, b) => a.num - b.num);
   S.tickets.sort((a, b) => a.num - b.num);
@@ -61,12 +55,18 @@ const ContestersUI = {
     byId('cBulk').onchange = async e => { await this.bulk([...e.target.files]); e.target.value = ''; };
     byId('cSearch').oninput = () => this.render();
     byId('cResetPool').onclick = async () => {
-      if (!confirm('Mark every contester as "waiting" so they can be drawn again?')) return;
-      S.contesters.forEach(c => { c.status = 'waiting'; });
+      if (!confirm(`Mark every contester as "waiting" in ${curStage().name}, so they can be drawn again?`)) return;
+      S.contesters.forEach(c => setDone(c, false));
       await DB.putMany('contesters', S.contesters);
       this.render(); Admin.header();
       toast('Everyone is waiting again');
     };
+    byId('cStage').onchange = async e => {
+      S.activeStage = e.target.value;
+      await saveActiveStage();
+      this.render(); Admin.header();
+    };
+    this.renderStageSelect();
     byId('cGrid').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b) return;
@@ -112,7 +112,7 @@ const ContestersUI = {
 
     let c;
     if (this.editing) c = S.contesters.find(x => x.id === this.editing);
-    else { c = { id: uid(), status: 'waiting', created: Date.now() }; S.contesters.push(c); }
+    else { c = { id: uid(), done: {}, created: Date.now() }; S.contesters.push(c); }
     Object.assign(c, { num, name, photo: this.photo || '' });
     try { await DB.put('contesters', c); }
     catch (e) { return toast('Could not save: ' + e.message, 'error'); }
@@ -140,7 +140,7 @@ const ContestersUI = {
 
   async toggle(id) {
     const c = S.contesters.find(x => x.id === id);
-    c.status = c.status === 'done' ? 'waiting' : 'done';
+    setDone(c, !isDone(c));
     await DB.put('contesters', c);
     this.render(); Admin.header();
   },
@@ -164,7 +164,7 @@ const ContestersUI = {
     let n = this.nextNum(), added = 0;
     for (const f of files) {
       try {
-        const c = { id: uid(), num: n++, name: nameFromFile(f) || `Contester ${n - 1}`, photo: await fileToDataURL(f, 720, 0.88), status: 'waiting', created: Date.now() };
+        const c = { id: uid(), num: n++, name: nameFromFile(f) || `Contester ${n - 1}`, photo: await fileToDataURL(f, 720, 0.88), done: {}, created: Date.now() };
         await DB.put('contesters', c);
         S.contesters.push(c);
         added++;
@@ -174,6 +174,11 @@ const ContestersUI = {
     this.resetForm();
     this.render(); Admin.header();
     toast(`Added ${added} contester${added === 1 ? '' : 's'}. Click ✎ to fix any names.`);
+  },
+
+  renderStageSelect() {
+    byId('cStage').innerHTML = S.event.stages.map((s, i) =>
+      `<option value="${s.id}"${s.id === curStage().id ? ' selected' : ''}>${i + 1}. ${esc(s.name)}</option>`).join('');
   },
 
   render() {
@@ -187,16 +192,16 @@ const ContestersUI = {
       return;
     }
     grid.innerHTML = list.map(c => `
-      <div class="card c-card ${c.status === 'done' ? 'is-done' : ''}" data-id="${c.id}">
+      <div class="card c-card ${isDone(c) ? 'is-done' : ''}" data-id="${c.id}">
         <div class="c-photo" data-act="view"><img src="${esc(avatarFor(c))}" alt="" loading="lazy"></div>
         <div class="c-body">
           <div class="c-num">#${c.num}</div>
           <div class="c-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <span class="badge ${c.status === 'done' ? 'done' : 'wait'}">${c.status === 'done' ? '✓ Presented' : '● Waiting'}</span>
+          <span class="badge ${isDone(c) ? 'done' : 'wait'}">${isDone(c) ? '✓ Presented' : '● Waiting'}</span>
         </div>
         <div class="card-actions">
           <button data-act="edit" title="Edit">✎</button>
-          <button data-act="toggle" title="${c.status === 'done' ? 'Mark as waiting' : 'Mark as presented'}">${c.status === 'done' ? '↺' : '✓'}</button>
+          <button data-act="toggle" title="${isDone(c) ? 'Mark as waiting' : 'Mark as presented'}">${isDone(c) ? '↺' : '✓'}</button>
           <button data-act="del" title="Delete" class="del">🗑</button>
         </div>
       </div>`).join('') || '<div class="empty-state">No match.</div>';
@@ -233,6 +238,7 @@ const TicketsUI = {
       if (!b) return;
       this[b.dataset.act](b.closest('[data-id]').dataset.id);
     };
+    this.renderStageOptions('');
     this.resetForm();
     this.render();
   },
@@ -266,6 +272,7 @@ const TicketsUI = {
       fg: byId('tFg').value,
       bg: byId('tBg').value,
       image: this.image,
+      stageId: byId('tStage').value,
     };
   },
 
@@ -326,6 +333,7 @@ const TicketsUI = {
     byId('tAlign').value = t.align || 'center';
     byId('tFg').value = t.fg || '#ffffff';
     byId('tBg').value = t.bg || '#140f33';
+    this.renderStageOptions(t.stageId || '');
     byId('tFormTitle').textContent = `Edit ticket #${t.num}`;
     byId('tSave').textContent = 'Save changes';
     byId('tCancel').hidden = false;
@@ -361,7 +369,7 @@ const TicketsUI = {
       try {
         const t = {
           id: uid(), num: n++, title: '', type: 'image', text: '', size: 'l', align: 'center',
-          fg: '#ffffff', bg: '#140f33', image: await fileToDataURL(f, 2000, 0.9), used: false, created: Date.now(),
+          fg: '#ffffff', bg: '#140f33', image: await fileToDataURL(f, 2000, 0.9), used: false, created: Date.now(), stageId: byId('tStage').value,
         };
         await DB.put('tickets', t);
         S.tickets.push(t);
@@ -372,6 +380,14 @@ const TicketsUI = {
     this.resetForm();
     this.render(); Admin.header();
     toast(`Added ${added} ticket${added === 1 ? '' : 's'}`);
+  },
+
+  /** Fill the "Used in" select, keeping the current choice. */
+  renderStageOptions(sel = byId('tStage').value) {
+    byId('tStage').innerHTML = '<option value="">All stages</option>' + S.event.stages.map((s, i) =>
+      `<option value="${s.id}">Only stage ${i + 1}: ${esc(s.name)}</option>`).join('');
+    byId('tStage').value = S.event.stages.some(s => s.id === sel) ? sel : '';
+    if (S.tickets.length) this.render();
   },
 
   render() {
@@ -389,6 +405,7 @@ const TicketsUI = {
           <b>#${t.num}</b>
           <span class="t-label">${esc(t.title || (t.type === 'text' ? (t.text || '').slice(0, 40) : 'Image'))}</span>
           <span class="badge ${t.used ? 'done' : 'wait'}">${t.used ? 'Used' : 'In deck'}</span>
+          ${t.stageId ? `<span class="badge bi" title="Only drawn in this stage">${esc(S.event.stages.find(s => s.id === t.stageId)?.name || 'Deleted stage')}</span>` : ''}
         </div>
         <div class="card-actions">
           <button data-act="edit" title="Edit">✎</button>
@@ -399,71 +416,11 @@ const TicketsUI = {
   },
 };
 
-/* ============================ Timers ============================ */
-const TimersUI = {
-  init() {
-    const list = byId('phaseList');
-    const save = debounce(() => savePhases(), 250);
-    list.addEventListener('input', e => {
-      const row = e.target.closest('[data-i]');
-      if (!row) return;
-      const p = S.phases[+row.dataset.i];
-      const f = e.target.dataset.f;
-      if (f === 'name') p.name = e.target.value || 'Phase';
-      else if (f === 'color') { p.color = e.target.value; row.style.setProperty('--pc', p.color); }
-      else if (f === 'min' || f === 's') {
-        const m = Math.max(0, parseInt(row.querySelector('[data-f=min]').value, 10) || 0);
-        const s = Math.max(0, parseInt(row.querySelector('[data-f=s]').value, 10) || 0);
-        p.sec = Math.max(1, m * 60 + s);
-      }
-      save();
-    });
-    list.addEventListener('click', e => {
-      const b = e.target.closest('[data-act]');
-      if (!b) return;
-      const i = +b.closest('[data-i]').dataset.i;
-      if (b.dataset.act === 'del') {
-        if (S.phases.length === 1 && !confirm('Remove the last phase? Rounds will then have no timer.')) return;
-        S.phases.splice(i, 1);
-      } else if (b.dataset.act === 'up' && i > 0) {
-        [S.phases[i - 1], S.phases[i]] = [S.phases[i], S.phases[i - 1]];
-      } else if (b.dataset.act === 'down' && i < S.phases.length - 1) {
-        [S.phases[i + 1], S.phases[i]] = [S.phases[i], S.phases[i + 1]];
-      } else return;
-      savePhases();
-      this.render();
-    });
-    byId('phaseAdd').onclick = () => {
-      const colors = ['#34d399', '#ec4899', '#a78bfa', '#f87171', '#38bdf8', '#f5c451'];
-      S.phases.push({ id: uid(), name: 'New phase', sec: 60, color: colors[S.phases.length % colors.length] });
-      savePhases();
-      this.render();
-      const inputs = $$('#phaseList [data-f=name]');
-      inputs[inputs.length - 1].select();
-    };
-    this.render();
-  },
-
-  render() {
-    byId('phaseList').innerHTML = S.phases.map((p, i) => `
-      <div class="phase-row" data-i="${i}" style="--pc:${esc(p.color)}">
-        <span class="ph-idx">${i + 1}</span>
-        <input type="color" data-f="color" value="${esc(p.color)}" title="Colour">
-        <input type="text" data-f="name" value="${esc(p.name)}" placeholder="Phase name">
-        <div class="dur">
-          <input type="number" data-f="min" min="0" value="${Math.floor(p.sec / 60)}"><span>min</span>
-          <input type="number" data-f="s" min="0" max="59" value="${p.sec % 60}"><span>sec</span>
-        </div>
-        <div class="ph-actions">
-          <button data-act="up" title="Move up">↑</button>
-          <button data-act="down" title="Move down">↓</button>
-          <button data-act="del" title="Remove" class="del">✕</button>
-        </div>
-      </div>`).join('') || '<div class="empty-state">No phases. Add one below.</div>';
-  },
-};
-
 /* ============================ Results ============================ */
+/** History entries from older versions stored a/b/ticket instead of team/tickets. */
+const histTeam = h => h.team || [h.a, h.b].filter(Boolean);
+const histTickets = h => h.tickets || (h.ticket ? [h.ticket] : []);
+
 const ResultsUI = {
   init() {
     byId('hClear').onclick = async () => {
@@ -471,25 +428,42 @@ const ResultsUI = {
       S.history = [];
       await DB.set('history', S.history);
       this.render();
+      Admin.header();
     };
     byId('hExport').onclick = () => {
-      const rows = [['Round', 'Contester ID', 'Contester', 'Partner ID', 'Partner', 'Ticket', 'Ticket title', 'Time']];
-      S.history.forEach(h => rows.push([h.round, h.a?.num, h.a?.name, h.b?.num ?? '', h.b?.name ?? '', h.ticket?.num ?? '', h.ticket?.title ?? '', new Date(h.at).toLocaleString()]));
+      const people = Math.max(1, ...S.history.map(h => histTeam(h).length));
+      const tks = Math.max(1, ...S.history.map(h => histTickets(h).length));
+      const head = ['Round', 'Stage', 'Format'];
+      for (let i = 1; i <= people; i++) head.push(`Person ${i} ID`, `Person ${i}`);
+      for (let i = 1; i <= tks; i++) head.push(`Ticket ${i}`, `Ticket ${i} title`);
+      head.push('Time');
+      const rows = [head];
+      S.history.forEach(h => {
+        const r = [h.round, h.stage || '', h.format || ''];
+        const team = histTeam(h), tickets = histTickets(h);
+        for (let i = 0; i < people; i++) r.push(team[i]?.num ?? '', team[i]?.name ?? '');
+        for (let i = 0; i < tks; i++) r.push(tickets[i]?.num ?? '', tickets[i]?.title ?? '');
+        r.push(new Date(h.at).toLocaleString());
+        rows.push(r);
+      });
       const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
-      download(`contest-rounds-${today()}.csv`, '﻿' + csv, 'text/csv');
+      download(`contest-rounds-${today()}.csv`, '\ufeff' + csv, 'text/csv');
     };
     this.render();
   },
   render() {
     byId('hCount').textContent = `(${S.history.length})`;
-    byId('hBody').innerHTML = S.history.slice().reverse().map(h => `
-      <tr>
+    byId('hBody').innerHTML = S.history.slice().reverse().map(h => {
+      const team = histTeam(h).map(c => `<span class="who">#${c.num} ${esc(c.name)}</span>`).join('');
+      const tickets = histTickets(h).map(t => `<span class="who">#${t.num}${t.title ? ' ' + esc(t.title) : ''}</span>`).join('');
+      return `<tr>
         <td><b>${h.round}</b></td>
-        <td>#${h.a.num} ${esc(h.a.name)}</td>
-        <td>${h.b ? `#${h.b.num} ${esc(h.b.name)}` : '<span class="muted">—</span>'}</td>
-        <td>${h.ticket ? `#${h.ticket.num} ${esc(h.ticket.title)}` : '<span class="muted">—</span>'}</td>
+        <td>${team || '<span class="muted">—</span>'}</td>
+        <td>${tickets || '<span class="muted">—</span>'}</td>
+        <td class="muted">${esc(h.stage || h.format || '')}</td>
         <td class="muted">${new Date(h.at).toLocaleString()}</td>
-      </tr>`).join('') || '<tr><td colspan="5" class="muted center">No rounds yet</td></tr>';
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" class="muted center">No rounds yet</td></tr>';
   },
 };
 
@@ -505,9 +479,7 @@ const SettingsUI = {
         else v = el.value;
         S.settings[k] = v;
         saveSettings();
-        if (k === 'title' || k === 'subtitle') Admin.header();
         if (k === 'sound') Sound.setEnabled(v);
-        if (k === 'uniqueTickets') Admin.header();
       };
       el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', debounce(handler, el.type === 'checkbox' ? 0 : 300));
     });
@@ -515,8 +487,10 @@ const SettingsUI = {
 
     byId('bExport').onclick = () => {
       const data = {
-        app: 'contest-manager', version: 1, exported: new Date().toISOString(),
-        contesters: S.contesters, tickets: S.tickets, settings: S.settings, phases: S.phases, history: S.history,
+        app: 'contest-manager', version: 2, exported: new Date().toISOString(),
+        contesters: S.contesters, tickets: S.tickets, settings: S.settings,
+        format: S.format, templates: S.templates, history: S.history,
+        event: S.event, activeStage: S.activeStage,
       };
       download(`contest-backup-${today()}.json`, JSON.stringify(data), 'application/json');
     };
@@ -532,23 +506,27 @@ const SettingsUI = {
         await DB.clear('contesters'); await DB.clear('tickets');
         await DB.putMany('contesters', data.contesters);
         await DB.putMany('tickets', data.tickets);
-        S.contesters = data.contesters; S.tickets = data.tickets;
-        S.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
-        S.phases = Array.isArray(data.phases) ? data.phases : structuredClone(DEFAULT_PHASES);
-        S.history = Array.isArray(data.history) ? data.history : [];
-        await Promise.all([saveSettings(), savePhases(), DB.set('history', S.history)]);
-        this.load(); TimersUI.render(); Admin.refreshAll();
+        await Promise.all([
+          DB.set('settings', data.settings || {}),
+          data.format ? DB.set('format', data.format) : DB.set('format', migrateFormat(data.settings || {}, data.phases)),
+          DB.set('templates', Array.isArray(data.templates) ? data.templates : []),
+          DB.set('history', Array.isArray(data.history) ? data.history : []),
+          DB.set('event', data.event || null),
+          DB.set('activeStage', data.activeStage || ''),
+        ]);
+        await Admin.loadData();
+        this.load(); FormatUI.load(); StructureUI.load(); Admin.refreshAll();
         ContestersUI.resetForm(); TicketsUI.resetForm();
         toast('Backup imported');
       } catch (err) { toast('Import failed: ' + err.message, 'error'); }
     };
     byId('bResetAll').onclick = async () => {
-      if (!confirm('Start a new session?\n• all contesters → waiting\n• all tickets → unused\n• round history cleared\n\nContesters, tickets and settings are kept.')) return;
-      await Admin.resetStatuses(true);
+      if (!confirm('Start a new session?\n• all contesters → waiting, in every stage\n• all tickets → unused\n• round history cleared\n\nContesters, tickets, the structure and settings are kept.')) return;
+      await Admin.resetStatuses({ allStages: true, clearHistory: true });
       toast('New session ready');
     };
     byId('bErase').onclick = async () => {
-      if (!confirm('Erase ALL contesters, tickets, settings and history? This cannot be undone.')) return;
+      if (!confirm('Erase ALL contesters, tickets, the structure, formats, templates, settings and history? This cannot be undone.')) return;
       if (!confirm('Are you really sure? Consider exporting a backup first.')) return;
       await Promise.all(['contesters', 'tickets', 'kv'].map(s => DB.clear(s)));
       location.reload();
@@ -594,30 +572,66 @@ const Admin = {
     }
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
-    S.contesters = await DB.all('contesters');
-    S.tickets = await DB.all('tickets');
-    S.settings = { ...DEFAULT_SETTINGS, ...((await DB.get('settings')) || {}) };
-    S.phases = (await DB.get('phases')) || structuredClone(DEFAULT_PHASES);
-    S.history = (await DB.get('history')) || [];
-    sortAll();
-    Sound.setEnabled(S.settings.sound);
+    await this.loadData();
 
     this.bindTabs();
     ContestersUI.init();
     TicketsUI.init();
-    TimersUI.init();
+    StructureUI.init();
+    FormatUI.init();
     ResultsUI.init();
     SettingsUI.init();
+    LaunchDialog.init();
+    Console.init();
     Contest.init();
     this.header();
+    if (ROLE === 'audience') return Audience.boot();
 
-    byId('btnStart').onclick = () => Contest.open();
+    byId('btnStart').onclick = () => LaunchDialog.open();
+    document.addEventListener('click', e => { const b = e.target.closest('[data-goto-tab]'); if (b) this.tab(b.dataset.gotoTab); });
+    byId('topStats').onclick = e => { const b = e.target.closest('[data-goto]'); if (b) this.tab(b.dataset.goto); };
     byId('viewer').onclick = () => Viewer.close();
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !byId('viewer').hidden) Viewer.close(); });
   },
 
+  /** Read everything from storage (both windows call this). */
+  async loadData() {
+    S.contesters = await DB.all('contesters');
+    S.tickets = await DB.all('tickets');
+    const settings = (await DB.get('settings')) || {};
+    S.settings = pickSettings(settings);
+    const format = await DB.get('format');
+    S.format = format ? normalizeFormat(format) : migrateFormat(settings, await DB.get('phases'));
+    S.templates = ((await DB.get('templates')) || []).filter(t => t && t.id && t.format);
+    S.history = (await DB.get('history')) || [];
+    if (!format) await saveFormat();
+    const event = await DB.get('event');
+    S.event = event ? normalizeEvent(event) : migrateEvent();
+    if (!event) await saveEvent();
+    S.activeStage = (await DB.get('activeStage')) || '';
+    if (!S.event.stages.some(s => s.id === S.activeStage)) S.activeStage = S.event.stages[0].id;
+    // contesters from before stages existed: "presented" counts for the first stage
+    const old = S.contesters.filter(c => !c.done);
+    old.forEach(c => { c.done = c.status === 'done' ? { [S.event.stages[0].id]: true } : {}; delete c.status; });
+    if (old.length) await DB.putMany('contesters', old);
+    sortAll();
+    Sound.setEnabled(S.settings.sound);
+  },
+
+  /** Re-read what the contest changes while it runs (statuses, tickets, history). */
+  async reloadRuntime() {
+    S.contesters = await DB.all('contesters');
+    S.tickets = await DB.all('tickets');
+    S.history = (await DB.get('history')) || [];
+    S.activeStage = (await DB.get('activeStage')) || S.activeStage;
+    ContestersUI.renderStageSelect();
+    this.refreshAll();
+  },
+
+  tab(name) { this.goTab(name); window.scrollTo({ top: 0 }); },
+
   bindTabs() {
-    const go = name => {
+    const go = this.goTab = name => {
       $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
       $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
       try { localStorage.setItem('cm-tab', name); } catch (e) { /* ignore */ }
@@ -630,17 +644,18 @@ const Admin = {
   },
 
   header() {
-    byId('brandTitle').textContent = S.settings.title || 'Contest Manager';
-    byId('brandSub').textContent = S.settings.subtitle || 'Contest manager';
-    document.title = (S.settings.title || 'Contest') + ' · Contest Manager';
+    const e = S.event;
+    if (ROLE === 'audience') return;
+    byId('brandTitle').textContent = e.title || 'Contest Manager';
+    byId('brandSub').textContent = e.subtitle || 'Contest manager';
+    document.title = (e.title || 'Contest') + ' · Contest Manager';
     const w = waiting().length, unused = S.tickets.filter(t => !t.used).length;
     byId('topStats').innerHTML = `
+      <button class="stat stat-fmt" data-goto="structure" title="Change the contest structure">🗂 <b>${e.stages.length}</b> stage${e.stages.length === 1 ? '' : 's'}</button>
       <span class="stat"><b>${S.contesters.length}</b> contesters</span>
-      <span class="stat"><b>${w}</b> waiting</span>
-      <span class="stat"><b>${S.tickets.length}</b> tickets${S.settings.uniqueTickets ? ` (${unused} unused)` : ''}</span>
+      <span class="stat"><b>${w}</b> waiting in ${esc(curStage().name)}</span>
+      <span class="stat"><b>${S.tickets.length}</b> tickets (${unused} unused)</span>
       <span class="stat"><b>${S.history.length}</b> rounds</span>`;
-    byId('btnStart').disabled = !S.contesters.length;
-    byId('btnStart').title = S.contesters.length ? '' : 'Register contesters first';
   },
 
   refreshAll() {
@@ -651,10 +666,11 @@ const Admin = {
     this.header();
   },
 
-  /** Everyone waiting + all tickets unused (optionally clear history). */
-  async resetStatuses(clearHistory = false) {
-    S.contesters.forEach(c => { c.status = 'waiting'; });
-    S.tickets.forEach(t => { t.used = false; });
+  /** Everyone waiting in the active stage (or every stage), all tickets unused, optionally clear history. */
+  async resetStatuses({ allStages = false, clearHistory = false } = {}) {
+    S.contesters.forEach(c => { if (allStages) c.done = {}; else setDone(c, false); });
+    const deck = allStages ? S.tickets : stageDeck(curStage());
+    deck.forEach(t => { t.used = false; });
     await DB.putMany('contesters', S.contesters);
     await DB.putMany('tickets', S.tickets);
     if (clearHistory) { S.history = []; await DB.set('history', S.history); }

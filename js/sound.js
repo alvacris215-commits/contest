@@ -73,6 +73,13 @@ const Sound = (() => {
       tone({ f: 160, f2: 1300, type: 'sawtooth', dur: 0.7, vol: 0.045, attack: 0.3 });
       tone({ f: 320, f2: 2000, type: 'sine', dur: 0.7, vol: 0.08, attack: 0.3 });
     },
+    /** Twinkling shimmer that swells for about 1.7 s (the title sparks gathering). */
+    magic() {
+      for (let i = 0; i < 24; i++)
+        tone({ f: 1400 + Math.random() * 2800, type: 'triangle', t: i * 0.07, dur: 0.32, vol: 0.022 + i * 0.0012, wet: true });
+      tone({ f: 220, f2: 880, type: 'sine', dur: 1.8, vol: 0.07, attack: 1.2, wet: true });
+      tone({ f: 330, f2: 1320, type: 'triangle', dur: 1.8, vol: 0.03, attack: 1.2, wet: true });
+    },
     boom() {
       tone({ f: 150, f2: 35, type: 'sine', dur: 1.1, vol: 0.7 });
       noise({ dur: 0.6, vol: 0.3, f1: 3000, f2: 150, peak: 0.05 });

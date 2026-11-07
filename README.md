@@ -6,29 +6,72 @@ Open `index.html` in **Google Chrome** or **Microsoft Edge**. Double-clicking th
 
 | Tab | What you do there |
 | --- | --- |
-| 👥 Contesters | Register people with an ID number, a name and a photo. To add many at once, select several photos; each file name becomes the person's name. |
-| 🎟 Tickets / Problems | Create problems as an image, as text, or as image + text, with a title, text size, alignment and colours. A live preview shows how each one will look. |
-| ⏱ Timers | Set the phases, such as Preparing → Presenting, plus any extra ones you add, with each phase's length and colour. |
-| 🏆 Rounds | History of each round: who, with whom, and which ticket. Export it as CSV. |
-| ⚙ Settings | Title, sound, reveal delay, ticket reuse, and backup export/import. |
+| 🗂 Structure | The contest title and its stages (see below). |
+| 👥 Contesters | Register people with an ID number, a name and a photo. To add many at once, select several photos; each file name becomes the person's name. "Status in" shows who has presented in each stage. |
+| 🎟 Tickets / Problems | Create problems as an image, as text, or as image + text. "Used in" decides whether a ticket belongs to one stage or to all stages. |
+| 🧩 Format | How a round with draws works: people per round, tickets, timers. Save formats as templates (see below). |
+| 🏆 Rounds | History of each round: stage, people and tickets. Export it as CSV. |
+| ⚙ Settings | Sound, fullscreen, the pause before a reveal, and backup export/import. |
 
-Everything is saved automatically in the browser's IndexedDB storage. To move the contest to another computer, use **Settings → Export backup** and then **Import backup** there.
+Everything is saved automatically in the browser's IndexedDB storage. To move the contest to another computer, use **Settings → Export backup** and then **Import backup** there. The backup includes the structure, formats and templates.
+
+## Contest structure
+
+In **🗂 Structure** you set the contest title (for example *2026 Year's 2nd English Contest*) and add as many stages as you need. For each stage you write:
+
+- an icon, a name and a one-line tagline;
+- **How this stage runs**: a format or template from the Format tab (draws and timers, such as *Image description (pairs)*), or **Explanation only** for a stage that the app only explains;
+- the explanation and key points the audience sees;
+- presenter notes, which only you see in the console;
+- an optional picture.
+
+The opening, one click at a time: **contest title → contest structure** (each click reveals the next stage card) **→ one slide per stage → "Let's begin!"**. The next click starts stage 1.
+
+Who has presented is tracked separately for each stage, so everyone can take part again in the next stage.
+
+## Contest format and templates
+
+In the **🧩 Format** tab you set:
+
+- **Contest:** the format name, the title and subtitle on the opening screen, the round label, the title at the end of a round, and whether the step bar is shown at the top of the stage.
+- **People per round:** how many contesters present together (1–6). Each person gets a draw step with a **role** (e.g. Contester, Partner, Captain) and a **title** shown while the numbers spin. You also choose whether a team is filled up with people who already presented when too few are waiting.
+- **Tickets:** how many tickets are drawn per round (0–10), what they are called (Ticket, Topic, Question…), the title of the draw, and whether each ticket can be used only once. With several tickets you choose between:
+  - *Draw them all, then run the timers once.*
+  - *Draw one, run the timers, then draw the next.* This suits quizzes.
+- **Timer phases:** any number of phases (e.g. Preparing → Presenting → Questions), with each phase's length and colour, plus the countdown and warning colours.
+
+Titles can use `{round}`, `{name}` (first person drawn), `{last}` (latest person drawn), `{team}` (everyone drawn so far), `{n}` and `{total}` (ticket number and tickets per round).
+
+The **Templates** list has four built-in formats: Image description (pairs), Solo speech, Team of three, and Quiz duel. Click **Use this format** to load one, change anything you like, then **Save the current format as a template** to keep it. A template card shows **In use** and **changed** when you edit the format after loading it; **💾 Save changes** updates your own template.
+
+### The opening title
+
+The contest title is drawn as 3D gold lettering on the opening screen. Sparks swirl in and gather into the letters, a beam of light turns them into gold, and then a shine sweeps across them every few seconds. Long titles are split over two balanced lines; put `|` in the title to choose the break yourself (for example `2026 Year's 2nd | English Contest`). Ordinals such as 2nd are written with a raised "ND". Pressing a key while the title is still appearing shows it at once; the next key starts the first draw.
 
 ## Running the contest
 
-Click **Start Contest**. On the stage, **any key** (or a mouse click) moves to the next step:
+Click **Start Contest** and choose:
 
-1. The number orb spins through the waiting contester IDs. **Press a key** to stop it. It slows down, pauses for one second, then reveals the contester's photo and name.
-2. **Press a key** to start the partner draw, then **press again** to stop it. The partner is revealed, and then both people appear together.
-3. **Press a key** to start the ticket draw. **Press again** and a ticket is chosen, flies to the centre and flips over to show the problem.
-4. The **Preparing** timer starts after a short countdown, then the **Presenting** timer.
-5. After "Round complete", **press a key** for the next round.
+### Two screens (recommended)
+
+Connect the projector or TV as a second screen (extended display, not mirrored). This window becomes the **presenter console**, and the audience screen opens in a second window. Chrome may ask to "manage windows on all your displays": allow it, and the audience window opens on the second screen by itself. Otherwise, drag it there. **Click once on the audience window** to make it fullscreen. Sound plays from this window.
+
+In the console:
+- **Next** (or any key, or a presenter clicker) moves the audience screen on: the title, each stage reveal, each slide, then every draw. Contesters can press any key on this keyboard to stop a draw.
+- The **Opening** list jumps to any slide; the **Stages** list starts any stage.
+- While a timer runs you see it here, with pause, ±10 s and end-phase buttons.
+- **Notes** shows your presenter notes for what is on screen. **Contesters** shows who is waiting in the current stage.
+- Redo this round, End this round and End this stage are at the bottom. **Show the waiting screen** puts the audience screen back to the title card.
+
+### One screen
+
+The contest fills this screen and you click or press keys on it. Choose whether to start with the opening or a stage.
 
 Keys while a timer is running: `Space` pause · `Enter`/`→` end this phase now · `↑`/`↓` ±10 s.
-`Esc` opens the menu: Resume · Redo this round (puts the people and the ticket back) · End round now · Exit.
+`Esc` opens the menu: Resume · Redo this round (puts the people and tickets back) · End round now · Exit.
 Move the mouse to show the fullscreen, sound and menu buttons.
 
 Notes:
-- People who have presented are marked as "Presented" and are not drawn again. If there is an odd number, the last person's partner is drawn from earlier presenters.
-- When every ticket has been used, the deck reshuffles. You can turn this off in Settings.
+- People who have presented are marked as "Presented" and are not drawn again.
+- When every ticket has been used, the deck reshuffles. Turn off "Each ticket can be drawn only once" in the format to always use the full deck.
 - In fullscreen, the first `Esc` exits fullscreen (that is the browser's behaviour). Press it again for the menu.

@@ -34,8 +34,16 @@ class Roller {
 const Contest = (() => {
   const st = {
     mode: null, busy: false, gen: 0, roller: null, round: null,
-    pool: [], tpool: [], phaseIdx: -1, tm: null, raf: 0, cd: null, cdFn: null, menu: false,
+    pool: [], tpool: [], slot: 0, phaseIdx: -1, tm: null, raf: 0, cd: null, cdFn: null, menu: false, f: null,
+    remote: false, stageIdx: -1, explainOnly: false, revealed: 0, info: -1,
   };
+  const E = () => S.event;
+  const stageNow = () => E().stages[st.stageIdx];
+  const deck = () => stageDeck(stageNow());
+  /** Tell the presenter window that saved data changed. */
+  const saved = () => { if (st.remote) Link.send('saved'); };
+  /** The format is copied when the contest opens, so it cannot change mid-contest. */
+  const F = () => st.f;
   const CIRC = 2 * Math.PI * 90;
   let uiTimer = 0;
 
@@ -53,24 +61,32 @@ const Contest = (() => {
     byId('mRedo').onclick = redoRound;
     byId('mEnd').onclick = endRoundNow;
     byId('mExit').onclick = close;
+    document.addEventListener('fullscreenchange', () => { if (!byId('stage').hidden && st.mode === 'intro') TitleFX.finish(); });
     $$('.tm-controls button').forEach(b => b.onclick = () => { b.blur(); if (st.mode === 'timer') timerKey(b.dataset.k); });
     byId('ringFg').style.strokeDasharray = CIRC;
   }
 
-  function open() {
-    if (!S.contesters.length) { toast('Register at least one contester first', 'error'); return; }
+  /** opts.start: 'standby' | 'opening' | 'stage' (with opts.stage). opts.remote: driven from the presenter window. */
+  function open(opts = {}) {
+    st.remote = !!opts.remote;
+    st.f = normalizeFormat({});
+    st.stageIdx = -1;
     Sound.setEnabled(S.settings.sound);
     Sound.unlock();
     updateSoundBtn();
     byId('stage').hidden = false;
+    byId('stage').classList.toggle('remote', st.remote);
     document.body.classList.add('staging');
-    if (S.settings.autoFullscreen) enterFullscreen();
+    if (!st.remote && S.settings.autoFullscreen) enterFullscreen();
     FX.start();
     showUI();
-    intro();
+    if (opts.start === 'standby') standby();
+    else if (opts.start === 'stage') runStage(opts.stage || 0);
+    else opening();
   }
 
   function close() {
+    if (st.remote) { toggleMenu(false); standby(); return; }
     toggleMenu(false);
     reset();
     FX.stop();
@@ -89,7 +105,41 @@ const Contest = (() => {
     cancelAnimationFrame(st.raf); st.raf = 0; st.tm = null;
     clearInterval(st.cd); st.cd = null; st.cdFn = null;
     FX.clear(); FX.warpTo(0);
+    TitleFX.stop();
     byId('tmPaused').classList.remove('on');
+  }
+
+  /* ---------------- texts & step bar ---------------- */
+  function ctx(extra = {}) {
+    const r = st.round, team = r ? r.team : [];
+    return {
+      round: r ? r.num : S.history.length + 1,
+      name: team[0]?.name || '', last: team[team.length - 1]?.name || '',
+      team: team.map(c => c.name).join(' & '),
+      n: r ? Math.min(r.tickets.length + 1, r.tcount || 1) : 1, total: r ? r.tcount : F().ticketCount,
+      ...extra,
+    };
+  }
+  const T = (text, extra) => fill(text, ctx(extra));
+  const roleOf = i => (F().slots[i] && F().slots[i].role) || `Person ${i + 1}`;
+  const tLabel = () => F().ticketLabel || 'Ticket';
+
+  function buildSteps() {
+    const f = F(), r = st.round, steps = [];
+    f.slots.forEach((s, i) => steps.push({ key: 'p' + i, label: roleOf(i) }));
+    if (r.tcount > 0) steps.push({ key: 't', label: tLabel() + (r.tcount > 1 ? (f.ticketFlow === 'each' ? ` 1/${r.tcount}` : ` ×${r.tcount}`) : '') });
+    f.phases.forEach((p, i) => steps.push({ key: 'ph' + i, label: p.name, color: p.color }));
+    byId('stageSteps').innerHTML = steps.map(s =>
+      `<span data-k="${s.key}"${s.color ? ` style="--sc:${esc(s.color)}"` : ''}>${esc(s.label)}</span>`
+    ).join('<i>›</i>');
+    stepsOn(f.showSteps);
+  }
+  function stepsOn(on) { byId('stage').classList.toggle('has-steps', !!on && F().showSteps); }
+  function setStep(key, label) {
+    const els = $$('#stageSteps span');
+    const idx = els.findIndex(e => e.dataset.k === key);
+    els.forEach((e, i) => { e.className = idx < 0 ? 'past' : i < idx ? 'past' : i === idx ? 'cur' : ''; });
+    if (label && els[idx]) els[idx].textContent = label;
   }
 
   /* ---------------- helpers ---------------- */
@@ -130,14 +180,15 @@ const Contest = (() => {
       <div class="pc-name">· · ·</div>
     </div>`;
   }
+  function chip(c, role = '') {
+    return `<div class="chip"><img src="${esc(avatarFor(c))}" alt=""><span>${role ? `<small>${esc(role)}</small>` : ''}<b>#${c.num}</b> ${esc(c.name)}</span></div>`;
+  }
   function teamChips() {
-    const r = st.round;
-    return [r.a, r.b].filter(Boolean).map(c =>
-      `<div class="chip"><img src="${esc(avatarFor(c))}" alt=""><span><b>#${c.num}</b> ${esc(c.name)}</span></div>`
-    ).join('<div class="chip-amp">&amp;</div>');
+    return st.round.team.map(c => chip(c)).join('<div class="chip-amp">&amp;</div>');
   }
   function availableTickets() {
-    return S.settings.uniqueTickets ? (S.tickets.filter(t => !t.used).length || S.tickets.length) : S.tickets.length;
+    const d = deck();
+    return F().uniqueTickets ? (d.filter(t => !t.used).length || d.length) : d.length;
   }
 
   /* ---------------- input ---------------- */
@@ -154,7 +205,7 @@ const Contest = (() => {
 
   function onPointer(e) {
     if (e.button !== 0 || st.menu) return;
-    if (e.target.closest('button, #stageToolbar, #stageMenu, .msg-actions, .tm-controls')) return;
+    if (e.target.closest('button, #stageToolbar, #stageMenu, .msg-actions, .tm-controls, #fsHint')) return;
     if (st.mode === 'timer') return;
     action('click');
   }
@@ -162,17 +213,20 @@ const Contest = (() => {
   function action(key) {
     if (st.busy) return;
     switch (st.mode) {
-      case 'intro': return newRound();
-      case 'roll1':
-      case 'roll2': return stopRoll();
-      case 'reveal1': {
-        const p = partnerPool();
-        return p.list.length
-          ? startRoll('b', p.list, p.fromDone ? 'Everyone else has already presented, so the partner is drawn from earlier presenters' : '')
-          : showPair();
-      }
-      case 'pairShown': return startTicketRoll();
+      case 'standby': return opening();
+      case 'evTitle': return TitleFX.done() ? structure() : TitleFX.finish();
+      case 'structure': return revealNext();
+      case 'stageInfo': return st.info + 1 < E().stages.length ? stageInfo(st.info + 1) : closing();
+      case 'closing': return runStage(0);
+      case 'stageEnd': return runStage(st.stageIdx + 1);
+      case 'intro':
+        if (!TitleFX.done()) return TitleFX.finish();
+        return st.explainOnly ? stageEnd() : newRound();
+      case 'roll': return stopRoll();
+      case 'revealed': return nextMember();
+      case 'teamShown': return afterTeam();
       case 'ticketRoll': return stopTicket();
+      case 'ticketNext': return startTicketRoll();
       case 'countdown': return st.cdFn && st.cdFn();
       case 'ticketShown': return startTimers();
       case 'timer': return timerKey(key);
@@ -209,43 +263,249 @@ const Contest = (() => {
     byId('stageMenu').hidden = !st.menu;
     if (st.menu) {
       const r = st.round;
-      byId('mRedo').disabled = !(r && r.a);
+      byId('mRedo').disabled = !(r && r.team.length);
       byId('mEnd').disabled = !(r && r.committed);
       showUI();
     }
   }
 
-  /* ---------------- flow: intro ---------------- */
-  function intro() {
+  /* ---------------- opening (explanation of the contest) ---------------- */
+  function standby() {
     reset();
-    byId('introTitle').textContent = S.settings.title || 'Contest';
-    byId('introSub').textContent = S.settings.subtitle || '';
-    const w = waiting().length, t = availableTickets();
-    byId('introInfo').textContent = `${w} contester${w === 1 ? '' : 's'} waiting · ${t} ticket${t === 1 ? '' : 's'} in the deck`;
+    stepsOn(false);
+    st.stageIdx = -1;
+    byId('sbTitle').textContent = E().title || 'Contest';
+    byId('sbSub').textContent = E().subtitle || '';
+    replay('scrStandby'); show('scrStandby');
+    FX.warpTo(0.06);
+    st.mode = 'standby';
+  }
+
+  /** The gold drawn title, used for the contest title and for each stage title. */
+  function titleScreen({ kicker = '', title, sub = '', info = '', prompt, mode }) {
+    reset();
+    stepsOn(false);
+    byId('introKicker').textContent = kicker;
+    byId('introTitle').textContent = title;
+    byId('introSub').textContent = sub;
+    byId('introInfo').textContent = info;
+    byId('introPrompt').textContent = prompt;
+    const scr = byId('scrIntro');
+    scr.classList.remove('lit');
     replay('scrIntro'); show('scrIntro');
     FX.warpTo(0.12);
-    st.mode = 'intro';
+    st.mode = mode;
+    const g = st.gen;
+    Sound.whoosh();
+    setTimeout(() => { if (g === st.gen && !TitleFX.done()) Sound.magic(); }, 200);
+    TitleFX.play(byId('introCanvas'), byId('introBox'), title, {
+      onImpact(x, y) {
+        if (g !== st.gen) return;
+        scr.classList.add('lit');
+        flash(0.7);
+        Sound.boom(); Sound.chime();
+        FX.shockwave(x, y);
+        FX.shockwave(x, y, { dur: 1.4, color: '196,181,253', width: 3 });
+        FX.burst(x, y, { count: 260, speed: [3, 18], life: [0.8, 2.2], gravity: 0.05 });
+        FX.burst(x, y, { count: 80, shape: 'star', colors: FX.GOLD, speed: [1, 9], life: [1.2, 2.4], gravity: 0.015 });
+        FX.confetti(2600);
+      },
+    });
+  }
+
+  function opening() {
+    st.stageIdx = -1;
+    const n = E().stages.length;
+    titleScreen({
+      title: E().title || 'Contest', sub: E().subtitle,
+      info: `${n} stage${n === 1 ? '' : 's'}`,
+      prompt: 'Click to see how the contest works', mode: 'evTitle',
+    });
+  }
+
+  function stageCard(s, i) {
+    const facts = s.showFacts ? stageFacts(s).slice(0, 2) : [];
+    return `<div class="sc" data-i="${i}" style="--i:${i}">
+      <div class="sc-in">
+        <div class="sc-face sc-back"><span class="sc-q">?</span><small>Stage ${i + 1}</small></div>
+        <div class="sc-face sc-front">
+          <div class="sc-badge">Stage ${i + 1}</div>
+          <div class="sc-icon">${s.image ? `<img src="${esc(s.image)}" alt="">` : esc(s.icon)}</div>
+          <div class="sc-name">${esc(s.name)}</div>
+          ${s.tagline ? `<div class="sc-tag">${esc(s.tagline)}</div>` : ''}
+          ${facts.length ? `<div class="sc-facts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function structure() {
+    reset();
+    stepsOn(false);
+    st.stageIdx = -1;
+    const stages = E().stages, n = stages.length;
+    byId('stTitle').textContent = E().structureTitle || 'Contest structure';
+    const grid = byId('stGrid');
+    grid.className = `st-grid n${Math.min(n, 6)}`;
+    grid.innerHTML = stages.map((s, i) => stageCard(s, i)).join('<div class="sc-arrow">➜</div>');
+    st.revealed = 0;
+    byId('stPrompt').textContent = 'Click to reveal stage 1';
+    replay('scrStructure'); show('scrStructure');
+    FX.warpTo(0.2);
+    Sound.whoosh();
+    st.mode = 'structure';
+  }
+
+  async function revealNext() {
+    const stages = E().stages, n = stages.length;
+    if (st.revealed >= n) return E().detailSlides ? stageInfo(0) : closing();
+    const g = st.gen, i = st.revealed++;
+    st.busy = true;
+    const card = byId('stGrid').querySelector(`.sc[data-i="${i}"]`);
+    const arrows = $$('#stGrid .sc-arrow');
+    if (i > 0 && arrows[i - 1]) arrows[i - 1].classList.add('lit');
+    card.classList.add('open');
+    Sound.rise();
+    await wait(450);
+    if (g !== st.gen) return;
+    const [x, y] = center(card);
+    flash(0.25);
+    Sound.chime();
+    FX.shockwave(x, y, { max: card.offsetWidth * 1.4, dur: 0.8, width: 3 });
+    FX.burst(x, y, { count: 120, speed: [2, 11], life: [0.6, 1.6], gravity: 0.04 });
+    FX.burst(x, y, { count: 30, shape: 'star', colors: FX.GOLD, speed: [1, 6], gravity: 0.01 });
+    FX.sparkle(card, 3500);
+    await wait(500);
+    if (g !== st.gen) return;
+    byId('stPrompt').textContent = st.revealed < n ? `Click to reveal stage ${st.revealed + 1}` : 'Click to continue';
+    st.busy = false;
+  }
+
+  function stageInfo(i) {
+    reset();
+    stepsOn(false);
+    st.stageIdx = -1;
+    const stages = E().stages, s = stages[i];
+    if (!s) return closing();
+    st.info = i;
+    byId('siKicker').textContent = `Stage ${i + 1} of ${stages.length}`;
+    byId('siVisual').innerHTML = s.image ? `<img src="${esc(s.image)}" alt="">` : `<span>${esc(s.icon)}</span>`;
+    byId('siVisual').classList.toggle('has-img', !!s.image);
+    byId('siNum').textContent = i + 1;
+    byId('siName').innerHTML = words(s.name);
+    byId('siTag').textContent = s.tagline;
+    byId('siDesc').textContent = s.description;
+    const pts = s.points.split('\n').map(x => x.trim()).filter(Boolean);
+    byId('siPoints').innerHTML = pts.map((p, k) => `<li style="--k:${k}">${esc(p)}</li>`).join('');
+    const facts = s.showFacts ? stageFacts(s) : [];
+    byId('siFacts').innerHTML = facts.map((f, k) => `<span style="--k:${k + pts.length}">${esc(f)}</span>`).join('');
+    byId('siPrompt').textContent = i + 1 < stages.length ? `Click for stage ${i + 2}` : 'Click to continue';
+    replay('scrStageInfo'); show('scrStageInfo');
+    FX.warpTo(0.1);
+    st.mode = 'stageInfo';
+    const g = st.gen;
+    Sound.whoosh();
+    setTimeout(() => {
+      if (g !== st.gen) return;
+      const [x, y] = center(byId('siVisual'));
+      Sound.chime();
+      FX.shockwave(x, y, { dur: 0.9, width: 3 });
+      FX.burst(x, y, { count: 140, speed: [2, 12], gravity: 0.04 });
+      FX.sparkle(byId('siVisual'), 6000);
+    }, 650);
+  }
+
+  function closing() {
+    reset();
+    stepsOn(false);
+    st.stageIdx = -1;
+    const first = E().stages[0];
+    byId('clTitle').textContent = E().closingTitle || "Let's begin!";
+    byId('clSub').textContent = first ? `First up: Stage 1 · ${first.name}` : '';
+    byId('clPrompt').textContent = first ? 'Click to start stage 1' : '';
+    replay('scrClosing'); show('scrClosing');
+    FX.warpTo(0.3);
+    Sound.fanfare();
+    FX.confetti(3000);
+    st.mode = 'closing';
+  }
+
+  /* ---------------- stages ---------------- */
+  async function runStage(i) {
+    const s = E().stages[i];
+    if (!s) return finalScreen();
+    st.stageIdx = i;
+    if (S.activeStage !== s.id) {
+      S.activeStage = s.id;
+      await saveActiveStage();
+      saved();
+    }
+    const f = stageFormat(s);
+    st.explainOnly = !f;
+    st.f = f || normalizeFormat({});
+    st.round = null;
+    if (f && !S.contesters.length) {
+      return message('No contesters yet', 'Register contesters in the dashboard before running this stage.', [{ label: '✕ Back to dashboard', fn: close }]);
+    }
+    intro();
+  }
+
+  function intro() {
+    const s = stageNow(), f = F();
+    let info = '';
+    if (!st.explainOnly) {
+      const w = waiting().length, t = availableTickets();
+      const parts = [`${w} contester${w === 1 ? '' : 's'} waiting`];
+      if (f.ticketCount > 0) parts.push(`${t} ${tLabel().toLowerCase()}${t === 1 ? '' : 's'} in the deck`);
+      parts.push(f.teamSize === 1 ? 'one person per round' : `${f.teamSize} people per round`);
+      info = parts.join(' · ');
+    }
+    titleScreen({
+      kicker: `Stage ${st.stageIdx + 1}`, title: s.name, sub: s.tagline, info,
+      prompt: st.explainOnly ? 'Press any key to continue' : 'Press any key to begin', mode: 'intro',
+    });
+  }
+
+  /** A stage is over: everyone presented, or the presenter ended it. */
+  function stageEnd() {
+    reset();
+    const i = st.stageIdx, s = E().stages[i], next = E().stages[i + 1];
+    if (!s) return finalScreen();
+    const again = { label: '↺ Run this stage again (everyone waiting)', fn: async () => { await Admin.resetStatuses(); saved(); runStage(i); } };
+    if (!next) {
+      return message(E().endTitle || 'Thank you!', `${s.name} complete. That was the last stage.`,
+        [again, { label: '✕ Back to dashboard', fn: close }], 'final');
+    }
+    message(`${s.name} complete! 🎉`, `Next up: Stage ${i + 2} · ${next.name}`, [
+      { label: `▶ Start stage ${i + 2}: ${next.name}`, fn: () => runStage(i + 1) },
+      again,
+      { label: '✕ Back to dashboard', fn: close },
+    ], 'stageEnd');
+    byId('msgPrompt').textContent = `Press any key to start stage ${i + 2}`;
+  }
+
+  function finalScreen() {
+    reset();
+    message(E().endTitle || 'Thank you!', E().title, [{ label: '✕ Back to dashboard', fn: close }], 'final');
   }
 
   function newRound() {
     reset();
     const pool = waiting();
-    if (!pool.length) {
-      return message('Everyone has presented! 🎉', 'There are no contesters left who are waiting.', [
-        { label: '↺ Start over (mark everyone as waiting)', fn: async () => { await Admin.resetStatuses(); intro(); } },
-        { label: '✕ Back to dashboard', fn: close },
-      ]);
-    }
-    st.round = { num: S.history.length + 1, a: null, b: null, ticket: null, committed: false, reshuffle: false };
-    startRoll('a', pool);
+    if (!pool.length) return stageEnd();
+    st.round = { num: S.history.length + 1, team: [], tickets: [], tcount: Math.min(F().ticketCount, deck().length), committed: false };
+    buildSteps();
+    startRoll(0, pool);
   }
 
-  function message(title, text, actions) {
+  function message(title, text, actions, mode = 'message') {
+    stepsOn(false);
     byId('msgTitle').textContent = title;
     byId('msgText').textContent = text;
+    byId('msgPrompt').textContent = '';
     const box = byId('msgActions');
     box.innerHTML = '';
-    actions.forEach(a => {
+    (st.remote ? [] : actions).forEach(a => {
       const b = document.createElement('button');
       b.className = 'stage-btn';
       b.textContent = a.label;
@@ -254,20 +514,24 @@ const Contest = (() => {
     });
     replay('scrMessage'); show('scrMessage');
     FX.confetti(2500); Sound.fanfare();
-    st.mode = 'message';
+    st.mode = mode;
   }
 
   /* ---------------- flow: contester draw ---------------- */
-  function startRoll(which, pool, note = '') {
+  function startRoll(slot, pool, note = '') {
     st.pool = pool;
+    st.slot = slot;
     const r = st.round;
-    byId('rollLabel').textContent = `Round ${r.num}`;
-    byId('rollTitle').textContent = which === 'a' ? 'Who steps up next?' : `Choose a partner for ${r.a.name}`;
+    byId('rollLabel').textContent = T(F().roundLabel);
+    byId('rollTitle').textContent = T(F().slots[slot].title);
     byId('rollNote').textContent = note;
+    setStep('p' + slot);
     const left = byId('rollLeft'), right = byId('rollRight');
-    if (which === 'b') {
-      left.innerHTML = personCard(r.a, 'Contester');
-      right.innerHTML = mysteryCard('Partner');
+    if (r.team.length) {
+      left.innerHTML = r.team.length === 1
+        ? personCard(r.team[0], roleOf(0))
+        : `<div class="side-team">${r.team.map((c, i) => chip(c, roleOf(i))).join('')}</div>`;
+      right.innerHTML = mysteryCard(roleOf(slot));
       left.hidden = right.hidden = false;
     } else {
       left.hidden = right.hidden = true;
@@ -284,21 +548,21 @@ const Contest = (() => {
     FX.warpTo(1);
     Sound.whoosh();
 
-    let chip = null;
+    let hot = null;
     st.roller = new Roller(pool, c => {
       num.textContent = c.num;
       num.animate([{ transform: 'translateY(-16%) scale(1.07)', opacity: 0.45 }, { transform: 'none', opacity: 1 }], { duration: 110, easing: 'ease-out' });
-      if (chip) chip.classList.remove('hot');
-      chip = strip.querySelector(`[data-id="${c.id}"]`);
-      if (chip) chip.classList.add('hot');
+      if (hot) hot.classList.remove('hot');
+      hot = strip.querySelector(`[data-id="${c.id}"]`);
+      if (hot) hot.classList.add('hot');
     });
     st.roller.start();
-    st.mode = which === 'a' ? 'roll1' : 'roll2';
+    st.mode = 'roll';
   }
 
   async function stopRoll() {
     const g = st.gen;
-    const which = st.mode === 'roll1' ? 'a' : 'b';
+    const slot = st.slot, r = st.round;
     st.busy = true; st.mode = 'stopping';
     byId('rollPrompt').textContent = '';
     const chosen = pick(st.pool);
@@ -315,20 +579,20 @@ const Contest = (() => {
 
     await wait(S.settings.revealDelay);
     if (g !== st.gen) return;
-    st.round[which] = chosen;
-    await reveal(chosen, which === 'a' ? 'Contester' : 'Partner', g);
+    r.team.push(chosen);
+    await reveal(chosen, roleOf(slot), g);
     if (g !== st.gen) return;
 
-    if (which === 'a') {
-      const p = partnerPool();
-      byId('revealPrompt').innerHTML = `<span class="key">⌨</span> ${p.list.length ? 'Press any key to choose your partner' : 'Press any key to continue'}`;
-      st.mode = 'reveal1';
-      st.busy = false;
-    } else {
+    const full = r.team.length >= F().teamSize;
+    if (full && F().teamSize > 1) {
       await wait(2200);
       if (g !== st.gen) return;
-      showPair();
+      return showTeam();
     }
+    const more = !full && memberPool().list.length > 0;
+    byId('revealPrompt').innerHTML = `<span class="key">⌨</span> ${more ? `Press any key to draw: <b>${esc(roleOf(r.team.length))}</b>` : 'Press any key to continue'}`;
+    st.mode = 'revealed';
+    st.busy = false;
   }
 
   /** The magical reveal of a contester. */
@@ -362,33 +626,47 @@ const Contest = (() => {
     orb.classList.remove('implode', 'locked');
   }
 
-  function partnerPool() {
-    const a = st.round.a;
-    let list = waiting().filter(c => c.id !== a.id), fromDone = false;
-    if (!list.length) {
-      list = S.contesters.filter(c => c.id !== a.id);
+  /** Who can still join the current team. */
+  function memberPool() {
+    const ids = new Set(st.round.team.map(c => c.id));
+    let list = waiting().filter(c => !ids.has(c.id)), fromDone = false;
+    if (!list.length && F().fillFromDone) {
+      list = S.contesters.filter(c => !ids.has(c.id));
       fromDone = list.length > 0;
     }
     return { list, fromDone };
   }
 
-  async function showPair() {
+  function nextMember() {
+    const r = st.round;
+    if (r.team.length >= F().teamSize) return showTeam();
+    const p = memberPool();
+    if (!p.list.length) return showTeam();
+    startRoll(r.team.length, p.list, p.fromDone ? 'Everyone else has already presented, so this person is drawn from earlier presenters' : '');
+  }
+
+  async function showTeam() {
     const g = st.gen;
-    st.busy = true; st.mode = 'pair';
-    const { a, b, num } = st.round;
-    byId('pairLabel').textContent = `Round ${num}`;
-    byId('pairTitle').textContent = b ? 'Meet the team' : 'Solo performance';
-    byId('pairA').innerHTML = personCard(a);
-    byId('pairB').innerHTML = b ? personCard(b) : '';
-    byId('scrPair').classList.toggle('solo', !b);
+    st.busy = true; st.mode = 'team';
+    const { team } = st.round, n = team.length, f = F();
+    byId('pairLabel').textContent = T(f.roundLabel);
+    byId('pairTitle').textContent = T(f.teamTitle);
+    byId('pairNote').textContent = n < f.teamSize ? `Only ${n} of ${f.teamSize} could be drawn: there are not enough contesters` : '';
+    const side = i => (i * 2 + 1 < n ? 'pa' : i * 2 + 1 > n ? 'pb' : 'pm');
+    const link = '<div class="pair-link"><div class="beam"></div><div class="amp">&amp;</div></div>';
+    const row = byId('pairRow');
+    row.className = `pair-row n${Math.min(n, 6)}`;
+    row.innerHTML = team.map((c, i) => `<div class="pair-slot ${side(i)}">${personCard(c, n > 1 ? roleOf(i) : '')}</div>`).join(link);
+    byId('scrPair').classList.toggle('solo', n === 1);
     byId('pairPrompt').textContent = '';
+    setStep('p' + (n - 1));
     FX.stopEmitters();
     replay('scrPair'); show('scrPair');
     Sound.whoosh();
 
     await wait(820);
     if (g !== st.gen) return;
-    const [cx, cy] = center(byId(b ? 'pairLink' : 'pairA'));
+    const [cx, cy] = center(row);
     flash(0.55);
     Sound.boom(); Sound.fanfare();
     FX.shockwave(cx, cy);
@@ -399,34 +677,52 @@ const Contest = (() => {
 
     await wait(1300);
     if (g !== st.gen) return;
-    byId('pairPrompt').innerHTML = `<span class="key">⌨</span> ${S.tickets.length ? 'Press any key to draw your ticket' : 'Press any key to start the timer'}`;
-    st.mode = 'pairShown';
+    const r = st.round;
+    let next;
+    if (r.tcount > 0) next = r.tcount > 1 ? `Press any key to draw ${esc(tLabel().toLowerCase())} 1 of ${r.tcount}` : `Press any key to draw your ${esc(tLabel().toLowerCase())}`;
+    else next = f.phases.length ? 'Press any key to start the timer' : 'Press any key to finish the round';
+    byId('pairPrompt').innerHTML = `<span class="key">⌨</span> ${next}`;
+    st.mode = 'teamShown';
     st.busy = false;
+  }
+
+  async function afterTeam() {
+    if (st.round.tcount > 0) return startTicketRoll();
+    await commitRound();
+    startTimers();
   }
 
   /* ---------------- flow: ticket draw ---------------- */
   function ticketPool() {
-    const all = S.tickets;
-    if (!S.settings.uniqueTickets) return { list: all, reshuffle: false };
+    const taken = new Set(st.round.tickets.map(t => t.id));
+    const all = deck().filter(t => !taken.has(t.id));
+    if (!F().uniqueTickets) return { list: all, reshuffle: false };
     const unused = all.filter(t => !t.used);
     return unused.length ? { list: unused, reshuffle: false } : { list: all, reshuffle: all.length > 0 };
   }
 
+  const cardLabel = () => `<small style="--lw:${Math.max(4, tLabel().length)}">${esc(tLabel())}</small>`;
+
   async function startTicketRoll() {
+    const r = st.round;
     const { list, reshuffle } = ticketPool();
-    if (!list.length) {
-      await commitRound(null);
+    if (!list.length || r.tickets.length >= r.tcount) {
+      await commitRound();
       return startTimers();
     }
     st.tpool = list;
-    st.round.reshuffle = reshuffle;
+    st.reshuffle = reshuffle;
+    const k = r.tickets.length + 1;
+    setStep('t', r.tcount > 1 ? `${tLabel()} ${F().ticketFlow === 'each' ? `${k}/${r.tcount}` : `×${r.tcount}`}` : null);
     byId('tkTeam').innerHTML = teamChips();
-    byId('tkNote').textContent = reshuffle
-      ? 'Every ticket has been used, so the whole deck has been reshuffled'
-      : `${list.length} ticket${list.length > 1 ? 's' : ''} in the deck`;
+    byId('tkTitle').textContent = T(F().ticketTitle, { n: k });
+    const label = tLabel().toLowerCase();
+    byId('tkNote').textContent = (r.tcount > 1 && !F().ticketTitle.includes('{n}') ? `${tLabel()} ${k} of ${r.tcount} · ` : '') + (reshuffle
+      ? `Every ${label} has been used, so the deck has been reshuffled`
+      : `${list.length} ${label}${list.length > 1 ? 's' : ''} in the deck`);
     const grid = byId('tkGrid');
     grid.innerHTML = list.map((t, i) =>
-      `<div class="tk" data-id="${t.id}" style="--d:${i}"><div class="tk-in"><span class="tk-star">✦</span><b>${t.num}</b><small>TICKET</small></div></div>`
+      `<div class="tk" data-id="${t.id}" style="--d:${i}"><div class="tk-in"><span class="tk-star">✦</span><b>${t.num}</b>${cardLabel()}</div></div>`
     ).join('');
     layoutTickets(list.length);
     byId('tkPrompt').innerHTML = '<span class="key">⌨</span> Press any key to stop';
@@ -475,10 +771,13 @@ const Contest = (() => {
 
     await wait(S.settings.revealDelay);
     if (g !== st.gen) return;
-    await commitRound(t);
+    await commitRound();
+    await addTicket(t, st.reshuffle);
 
     const r = card.getBoundingClientRect();
     byId('btNum').textContent = t.num;
+    byId('btLabel').textContent = tLabel();
+    byId('btLabel').style.setProperty('--lw', Math.max(4, tLabel().length));
     byId('btFront').innerHTML = ticketHTML(t);
     const inner = byId('btInner');
     inner.classList.remove('flipped');
@@ -510,12 +809,16 @@ const Contest = (() => {
     await wait(1000);
     if (g !== st.gen) return;
     st.busy = false;
-    const first = S.phases[0];
-    if (!first) {
+    const f = F(), rd = st.round, first = f.phases[0];
+    const more = rd.tickets.length < rd.tcount && ticketPool().list.length > 0;
+    if (more && (f.ticketFlow === 'together' || !first)) {
+      byId('btPrompt').innerHTML = `<span class="key">⌨</span> Press any key to draw ${esc(tLabel().toLowerCase())} ${rd.tickets.length + 1} of ${rd.tcount}`;
+      st.mode = 'ticketNext';
+    } else if (!first) {
       byId('btPrompt').innerHTML = '<span class="key">⌨</span> Press any key to finish the round';
       st.mode = 'ticketShown';
-    } else if (S.settings.autoAdvance) {
-      countdown(byId('btPrompt'), `${first.name} starts in`, S.settings.autoDelay, startTimers);
+    } else if (f.autoAdvance) {
+      countdown(byId('btPrompt'), `${first.name} starts in`, f.autoDelay, startTimers);
     } else {
       byId('btPrompt').innerHTML = `<span class="key">⌨</span> Press any key to start ${esc(first.name)}`;
       st.mode = 'ticketShown';
@@ -543,51 +846,64 @@ const Contest = (() => {
   }
 
   /* ---------------- round bookkeeping ---------------- */
-  async function commitRound(t) {
+  /** Mark the team as presented and log the round. Tickets are added with addTicket(). */
+  async function commitRound() {
     const r = st.round;
     if (!r || r.committed) return;
-    r.ticket = t || null;
-    r.undo = { status: {}, used: null };
-    const people = [r.a, r.b].filter(Boolean);
-    people.forEach(c => { r.undo.status[c.id] = c.status; c.status = 'done'; });
-    let changedTickets = [];
-    if (t && S.settings.uniqueTickets) {
-      r.undo.used = Object.fromEntries(S.tickets.map(x => [x.id, !!x.used]));
-      if (r.reshuffle) { S.tickets.forEach(x => { x.used = false; }); changedTickets = S.tickets.slice(); }
-      t.used = true;
-      if (!r.reshuffle) changedTickets = [t];
-    }
-    const brief = c => ({ num: c.num, name: c.name });
+    r.undo = { done: {}, used: Object.fromEntries(S.tickets.map(x => [x.id, !!x.used])) };
+    r.team.forEach(c => { r.undo.done[c.id] = isDone(c); setDone(c, true); });
+    const s = stageNow();
     const h = {
-      id: uid(), round: r.num, at: Date.now(),
-      a: brief(r.a), b: r.b ? brief(r.b) : null,
-      ticket: t ? { num: t.num, title: t.title || '' } : null,
+      id: uid(), round: r.num, at: Date.now(), format: F().name,
+      stage: s ? s.name : '', stageId: s ? s.id : '',
+      team: r.team.map(c => ({ num: c.num, name: c.name })), tickets: [],
     };
     S.history.push(h);
-    r.histId = h.id;
+    r.hist = h;
     r.committed = true;
     try {
-      await Promise.all([DB.putMany('contesters', people), DB.putMany('tickets', changedTickets), DB.set('history', S.history)]);
+      await Promise.all([DB.putMany('contesters', r.team), DB.set('history', S.history)]);
     } catch (e) { console.error(e); }
+    saved();
+  }
+
+  async function addTicket(t, reshuffle) {
+    const r = st.round;
+    r.tickets.push(t);
+    let changed = [];
+    if (F().uniqueTickets) {
+      if (reshuffle) {
+        const taken = new Set(r.tickets.map(x => x.id));
+        changed = deck().filter(x => !taken.has(x.id));
+        changed.forEach(x => { x.used = false; });
+        changed.push(t);
+      }
+      t.used = true;
+      if (!reshuffle) changed = [t];
+    }
+    r.hist.tickets.push({ num: t.num, title: t.title || '' });
+    try {
+      await Promise.all([DB.putMany('tickets', changed), DB.set('history', S.history)]);
+    } catch (e) { console.error(e); }
+    saved();
   }
 
   async function undoRound() {
     const r = st.round;
     if (!r || !r.committed) return;
     const changed = [], tch = [];
-    for (const [id, s] of Object.entries(r.undo.status)) {
+    for (const [id, was] of Object.entries(r.undo.done)) {
       const c = S.contesters.find(x => x.id === id);
-      if (c) { c.status = s; changed.push(c); }
+      if (c) { setDone(c, was); changed.push(c); }
     }
-    if (r.undo.used) {
-      for (const t of S.tickets) {
-        const u = r.undo.used[t.id];
-        if (u !== undefined && !!t.used !== u) { t.used = u; tch.push(t); }
-      }
+    for (const t of S.tickets) {
+      const u = r.undo.used[t.id];
+      if (u !== undefined && !!t.used !== u) { t.used = u; tch.push(t); }
     }
-    S.history = S.history.filter(h => h.id !== r.histId);
+    S.history = S.history.filter(h => h.id !== r.hist.id);
     r.committed = false;
     await Promise.all([DB.putMany('contesters', changed), DB.putMany('tickets', tch), DB.set('history', S.history)]);
+    saved();
   }
 
   async function redoRound() {
@@ -605,24 +921,38 @@ const Contest = (() => {
   }
 
   /* ---------------- flow: timers ---------------- */
+  function moreTickets() {
+    const r = st.round;
+    return F().ticketFlow === 'each' && r.tickets.length < r.tcount && ticketPool().list.length > 0;
+  }
+
   async function startTimers() {
     const r = st.round;
-    if (!r.committed) await commitRound(r.ticket);
+    if (!r.committed) await commitRound();
     clearInterval(st.cd); st.cd = null;
+    const shown = F().ticketFlow === 'each' ? r.tickets.slice(-1) : r.tickets;
     const prob = byId('tmProblem');
-    if (r.ticket) { prob.innerHTML = ticketHTML(r.ticket); prob.hidden = false; }
-    else { prob.innerHTML = ''; prob.hidden = true; }
-    byId('scrTimer').classList.toggle('no-problem', !r.ticket);
+    prob.classList.toggle('multi', shown.length > 1);
+    if (shown.length > 1) {
+      const n = shown.length, cols = n <= 2 ? 1 : n <= 6 ? 2 : 3;
+      prob.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+      prob.style.gridTemplateRows = `repeat(${Math.ceil(n / cols)}, minmax(0, 1fr))`;
+      prob.innerHTML = shown.map(t => `<div class="tm-tk">${ticketHTML(t)}</div>`).join('');
+    } else {
+      prob.style.gridTemplateColumns = prob.style.gridTemplateRows = '';
+      prob.innerHTML = shown.length ? ticketHTML(shown[0]) : '';
+    }
+    prob.hidden = !shown.length;
+    byId('scrTimer').classList.toggle('no-problem', !shown.length);
     byId('tmTeam').innerHTML = teamChips();
-    byId('tmSteps').innerHTML = S.phases.map((p, i) => `<span data-i="${i}">${esc(p.name)}</span>`).join('<i>›</i>');
     FX.stopEmitters();
-    if (!S.phases.length) return showDone();
+    if (!F().phases.length) return moreTickets() ? startTicketRoll() : showDone();
     show('scrTimer');
     startPhase(0);
   }
 
   function startPhase(i) {
-    const p = S.phases[i];
+    const p = F().phases[i];
     if (!p) return showDone();
     st.phaseIdx = i;
     const total = Math.max(1, p.sec) * 1000;
@@ -631,10 +961,7 @@ const Contest = (() => {
     scr.style.setProperty('--pc', p.color || '#f5c451');
     scr.classList.remove('warn', 'danger', 'over');
     byId('tmPhase').textContent = p.name;
-    $$('#tmSteps span').forEach(s => {
-      const k = +s.dataset.i;
-      s.className = k < i ? 'past' : k === i ? 'cur' : '';
-    });
+    setStep('ph' + i);
     byId('tmPrompt').innerHTML = '<span class="kb">Space</span> pause · <span class="kb">Enter</span> next · <span class="kb">↑↓</span> ±10s';
     byId('tmPaused').classList.remove('on');
     banner(p.name, fmtTime(total));
@@ -661,7 +988,7 @@ const Contest = (() => {
     const sec = Math.ceil(rem / 1000);
     if (sec !== tm.lastSec) {
       tm.lastSec = sec;
-      const s = S.settings, scr = byId('scrTimer');
+      const s = F(), scr = byId('scrTimer');
       scr.classList.toggle('danger', sec > 0 && sec <= s.dangerAt);
       scr.classList.toggle('warn', sec > s.dangerAt && sec <= s.warnAt);
       if (!tm.paused && sec > 0 && sec <= s.beepLast) Sound.beep(false);
@@ -719,16 +1046,21 @@ const Contest = (() => {
     byId('tmPrompt').textContent = '';
     if (skipped) Sound.whoosh();
     else { Sound.beep(true); Sound.gong(); flash(0.45, '#ff3d6e'); }
-    const next = S.phases[st.phaseIdx + 1];
-    banner(next ? 'Time!' : "Time's up!", next ? `Next: ${next.name}` : '');
+    const next = F().phases[st.phaseIdx + 1];
+    const more = !next && moreTickets();
+    const k = st.round.tickets.length + 1;
+    banner(next ? 'Time!' : "Time's up!", next ? `Next: ${next.name}` : more ? `Next: ${tLabel()} ${k} of ${st.round.tcount}` : '');
 
     await wait(1900);
     if (g !== st.gen) return;
     st.busy = false;
     if (next) {
       scr.classList.remove('over');
-      if (S.settings.autoAdvance) countdown(byId('tmPrompt'), `${next.name} starts in`, Math.min(5, S.settings.autoDelay), () => startPhase(st.phaseIdx + 1));
+      if (F().autoAdvance) countdown(byId('tmPrompt'), `${next.name} starts in`, Math.min(5, F().autoDelay), () => startPhase(st.phaseIdx + 1));
       else { byId('tmPrompt').innerHTML = `<span class="key">⌨</span> Press any key to start ${esc(next.name)}`; st.mode = 'phaseWait'; }
+    } else if (more) {
+      byId('tmPrompt').innerHTML = `<span class="key">⌨</span> Press any key to draw ${esc(tLabel().toLowerCase())} ${k} of ${st.round.tcount}`;
+      st.mode = 'ticketNext';
     } else {
       showDone();
     }
@@ -740,9 +1072,11 @@ const Contest = (() => {
     st.busy = true; st.mode = 'doneAnim';
     const r = st.round;
     const w = waiting().length;
-    byId('doneTitle').textContent = `Round ${r.num} complete!`;
+    setStep('done');
+    byId('doneTitle').textContent = T(F().doneTitle);
     byId('doneTeam').innerHTML = teamChips();
-    byId('doneInfo').textContent = w ? `${w} contester${w > 1 ? 's' : ''} still waiting` : 'Everyone has presented!';
+    const tk = r.tickets.length ? `${tLabel()} ${r.tickets.map(t => '#' + t.num).join(', ')} · ` : '';
+    byId('doneInfo').textContent = tk + (w ? `${w} contester${w > 1 ? 's' : ''} still waiting` : 'Everyone has presented!');
     byId('donePrompt').textContent = '';
     replay('scrDone'); show('scrDone');
     Sound.fanfare();
@@ -754,5 +1088,70 @@ const Contest = (() => {
     st.busy = false;
   }
 
-  return { init, open, close };
+  /* ---------------- remote control (presenter window) ---------------- */
+  function command(c) {
+    if (st.menu) toggleMenu(false);
+    switch (c.cmd) {
+      case 'key': return action(c.key);
+      case 'opening': return opening();
+      case 'structure': return structure();
+      case 'info': return stageInfo(c.i);
+      case 'closing': return closing();
+      case 'runStage': return runStage(c.i);
+      case 'timer': if (st.mode === 'timer' && !st.busy) timerKey(c.k); return;
+      case 'redo': return redoRound();
+      case 'endRound': return endRoundNow();
+      case 'endStage': return st.stageIdx >= 0 ? stageEnd() : null;
+      case 'standby': return standby();
+      case 'resetStage': {
+        const s = E().stages[c.i];
+        if (!s) return;
+        S.contesters.forEach(x => setDone(x, false, s.id));
+        return DB.putMany('contesters', S.contesters).then(saved);
+      }
+    }
+  }
+
+  function describe() {
+    const m = st.mode, r = st.round, s = stageNow();
+    const stage = s ? `Stage ${st.stageIdx + 1} · ` : '';
+    const round = r ? `${stage}Round ${r.num} · ` : stage;
+    switch (m) {
+      case 'standby': return 'Waiting screen (before the opening)';
+      case 'evTitle': return 'Opening · Contest title';
+      case 'structure': return `Opening · Structure (${st.revealed} of ${E().stages.length} stages shown)`;
+      case 'stageInfo': return `Opening · Stage ${st.info + 1}: ${E().stages[st.info]?.name || ''}`;
+      case 'closing': return `Opening · ${E().closingTitle}`;
+      case 'intro': return `${stage}Title: ${s ? s.name : ''}`;
+      case 'roll': return `${round}Drawing: ${roleOf(st.slot)} (spinning)`;
+      case 'stopping': return `${round}Stopping the draw…`;
+      case 'revealed': return `${round}${r.team[r.team.length - 1]?.name || ''} revealed`;
+      case 'team': case 'teamShown': return `${round}The team is on screen`;
+      case 'ticketRoll': return `${round}Drawing ${tLabel().toLowerCase()} (spinning)`;
+      case 'ticketNext': case 'ticketShown': return `${round}${tLabel()} on screen`;
+      case 'countdown': return `${round}Countdown to the timer`;
+      case 'timer': case 'phaseEnd': case 'phaseWait': return `${round}${F().phases[st.phaseIdx]?.name || 'Timer'}`;
+      case 'doneAnim': case 'done': return `${round}Round complete`;
+      case 'stageEnd': return `${stage}Stage complete`;
+      case 'final': return 'Final screen';
+      case 'message': return 'Message on screen';
+      default: return m || '';
+    }
+  }
+
+  function status() {
+    const scr = $('#screens .scr.on');
+    const pr = scr ? scr.querySelector('.prompt') : null;
+    const r = st.round, tm = st.tm, p = F().phases[st.phaseIdx];
+    return {
+      mode: st.mode, busy: st.busy, label: describe(),
+      prompt: pr ? pr.textContent.replace(/\s+/g, ' ').trim() : '',
+      stageIdx: st.stageIdx, revealed: st.revealed, info: st.info,
+      round: r ? { num: r.num, team: r.team.map(c => `#${c.num} ${c.name}`), tickets: r.tickets.map(t => `#${t.num}${t.title ? ' ' + t.title : ''}`), committed: r.committed } : null,
+      timer: tm && p ? { name: p.name, color: p.color, remain: Math.max(0, Math.round(tm.paused ? tm.remain : tm.end - performance.now())), total: tm.total, paused: tm.paused } : null,
+      fullscreen: !!document.fullscreenElement,
+    };
+  }
+
+  return { init, open, close, command, status };
 })();
