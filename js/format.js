@@ -26,6 +26,10 @@ const FORMAT_DEFAULTS = {
   warnAt: 30,
   dangerAt: 10,
   beepLast: 5,
+  scoring: true,
+  scoreMax: 10,
+  avgDelay: 5,
+  avgDecimals: 2,
 };
 const MAX_TEAM = 6, MAX_TICKETS = 10;
 
@@ -110,7 +114,10 @@ function normalizeFormat(f = {}) {
   const o = {};
   for (const k of Object.keys(FORMAT_DEFAULTS)) o[k] = f[k] !== undefined && f[k] !== null ? f[k] : structuredClone(FORMAT_DEFAULTS[k]);
   for (const k of ['name', 'title', 'subtitle', 'roundLabel', 'doneTitle', 'teamTitle', 'ticketLabel', 'ticketTitle']) o[k] = String(o[k]);
-  for (const k of ['showSteps', 'fillFromDone', 'uniqueTickets', 'autoAdvance']) o[k] = !!o[k];
+  for (const k of ['showSteps', 'fillFromDone', 'uniqueTickets', 'autoAdvance', 'scoring']) o[k] = !!o[k];
+  o.scoreMax = Math.max(1, Math.min(1000, Number(o.scoreMax) || 10));
+  o.avgDelay = clampInt(o.avgDelay, 0, 60, 5);
+  o.avgDecimals = clampInt(o.avgDecimals, 0, 3, 2);
   o.teamSize = clampInt(o.teamSize, 1, MAX_TEAM, 2);
   o.ticketCount = clampInt(o.ticketCount, 0, MAX_TICKETS, 1);
   o.ticketFlow = o.ticketFlow === 'each' ? 'each' : 'together';
@@ -194,7 +201,10 @@ function flowHTML(f) {
   } else {
     steps.push(`<span class="fl-group"><em>repeat ×${f.ticketCount}</em>${[`<span class="fl fl-tk">🎟 ${label}</span>`, ...ph].join(arrow)}</span>`);
   }
-  steps.push(`<span class="fl fl-done">🏆 ${esc(fill(f.doneTitle, SAMPLE_CTX) || 'Done')}</span>`);
+  if (f.scoring) steps.push(`<span class="fl fl-score">⭐ Scores${f.teamSize > 1 ? ` ×${f.teamSize}` : ''} <small>judges, then the average</small></span>`);
+  steps.push(f.scoring
+    ? '<span class="fl fl-done">🎲 Next round</span>'
+    : `<span class="fl fl-done">🏆 ${esc(fill(f.doneTitle, SAMPLE_CTX) || 'Done')}</span>`);
   return steps.join(arrow);
 }
 

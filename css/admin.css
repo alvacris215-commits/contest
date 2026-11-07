@@ -404,3 +404,26 @@ body.consoling #app { display: none; }
   .s-grid { grid-template-columns: 1fr; }
   .s-grid > * { grid-column: auto !important; }
 }
+
+/* ---------- judges, scores, ranking ---------- */
+.judge-row { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; background: rgba(0, 0, 0, .2); border: 1px solid var(--line); }
+.judge-row .ph-idx { --pc: var(--violet); color: #fff; }
+.fl-score { border-color: rgba(236, 72, 153, .55); }
+.score { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 99px; background: rgba(245, 196, 81, .16); color: var(--gold); font-size: 13px; }
+.rank-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 22px; }
+.rank { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.rank li { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(0, 0, 0, .2); }
+.rank li:nth-child(-n+3) { background: rgba(245, 196, 81, .1); }
+.rank .rk { font-size: 18px; text-align: center; }
+.rank b { color: var(--gold); font-size: 16px; }
+
+/* console: score entry */
+.cs-score { padding: 16px 18px; border-radius: 14px; border: 1px solid var(--gold); background: linear-gradient(160deg, rgba(245, 196, 81, .12), rgba(139, 92, 246, .1)); display: flex; flex-direction: column; gap: 14px; }
+.cs-score-head { display: flex; align-items: center; gap: 14px; }
+.cs-score-head img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid var(--gold); }
+.cs-score-head b { font-size: 20px; }
+.cs-score-inputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.cs-score-inputs input { font-size: 26px; font-weight: 800; text-align: center; padding: 10px; }
+.cs-score-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cs-avg { font-size: 16px; }
+.cs-avg b { font-size: 26px; color: var(--gold); margin-left: 6px; }

@@ -13,6 +13,7 @@ const EVENT_DEFAULTS = {
   closingTitle: "Let's begin!",
   endTitle: 'Thank you!',
   notes: '',
+  judges: ['Judge 1', 'Judge 2', 'Judge 3'],
   stages: [],
 };
 
@@ -42,6 +43,7 @@ function normalizeEvent(e = {}) {
   for (const k of Object.keys(EVENT_DEFAULTS)) o[k] = e[k] !== undefined && e[k] !== null ? e[k] : structuredClone(EVENT_DEFAULTS[k]);
   for (const k of ['title', 'subtitle', 'structureTitle', 'closingTitle', 'endTitle', 'notes']) o[k] = String(o[k]);
   o.detailSlides = !!o.detailSlides;
+  o.judges = (Array.isArray(o.judges) ? o.judges : []).map(j => String(j ?? ''));
   o.stages = (Array.isArray(o.stages) ? o.stages : []).map(normalizeStage);
   if (!o.stages.length) o.stages = [normalizeStage({ name: 'Stage 1' })];
   return o;
@@ -158,6 +160,25 @@ const StructureUI = {
       e.target.value = '';
       this.changed(true);
     });
+    const jl = byId('jList');
+    jl.addEventListener('input', e => {
+      const row = e.target.closest('[data-j]');
+      if (!row) return;
+      S.event.judges[+row.dataset.j] = e.target.value;
+      this.changed();
+    });
+    jl.addEventListener('click', e => {
+      const b = e.target.closest('[data-act=del]');
+      if (!b) return;
+      S.event.judges.splice(+b.closest('[data-j]').dataset.j, 1);
+      this.renderJudges(); this.changed();
+    });
+    byId('jAdd').onclick = () => {
+      S.event.judges.push(`Judge ${S.event.judges.length + 1}`);
+      this.renderJudges(); this.changed();
+      const inputs = $$('#jList input');
+      inputs[inputs.length - 1].select();
+    };
     byId('sAdd').onclick = () => {
       const n = S.event.stages.length + 1;
       S.event.stages.push(normalizeStage({ name: `Stage ${n}`, icon: ['🎤', '🧠', '✍️', '🏆', '💬', '🎯'][n % 6] }));
@@ -174,7 +195,17 @@ const StructureUI = {
       if (el.type === 'checkbox') el.checked = !!v; else el.value = v ?? '';
     });
     this.renderStages();
+    this.renderJudges();
     this.renderFlow();
+  },
+
+  renderJudges() {
+    byId('jList').innerHTML = S.event.judges.map((j, i) => `
+      <div class="judge-row" data-j="${i}">
+        <span class="ph-idx">${i + 1}</span>
+        <input type="text" value="${esc(j)}" placeholder="Judge name">
+        <div class="ph-actions"><button data-act="del" class="del" title="Remove judge">✕</button></div>
+      </div>`).join('') || '<div class="empty-state">No judges, so scoring is skipped. Add a judge to score contesters.</div>';
   },
 
   formatOptions(sel) {

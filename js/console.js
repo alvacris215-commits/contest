@@ -118,6 +118,15 @@ const Console = {
       if (d.cmd === 'resetStage') return this.resetStage();
       this.cmd(d.cmd, d.i !== undefined ? { i: +d.i } : d.k !== undefined ? { k: d.k } : {});
     });
+    const body = byId('csBody');
+    body.addEventListener('input', e => { if (e.target.closest('#csScore')) this.updateAvg(); });
+    body.addEventListener('click', e => { if (e.target.id === 'csScoreGo') this.sendScores(); });
+    body.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !e.target.closest('#csScore input')) return;
+      e.preventDefault();
+      const ins = $$('#csScore input'), k = ins.indexOf(e.target);
+      if (k < ins.length - 1) ins[k + 1].focus(); else this.sendScores();
+    });
     document.addEventListener('keydown', e => this.onKey(e), true);
     setInterval(() => { if (this.isOpen()) this.render(); }, 1000);
   },
@@ -210,10 +219,76 @@ const Console = {
       const f = Sound[m.name];
       if (f) f.apply(Sound, m.args || []);
     } else if (m.type === 'saved') {
-      Admin.reloadRuntime().then(() => { if (this.isOpen()) { this.cache = {}; this.render(); } });
+      Admin.reloadRuntime().then(() => {
+        if (!this.isOpen()) return;
+        this.cache = { scoreKey: this.cache.scoreKey };  // keep typed scores
+        this.render();
+      });
     } else if (m.type === 'hello') {
       this.lastSeen = Date.now();
     }
+  },
+
+  /** Score entry for the person on the audience screen. Rebuilt only when the person or step changes. */
+  renderScore(s) {
+    const sc = s && this.connected() ? s.score : null, box = byId('csScore');
+    box.hidden = !sc;
+    if (!sc) { this.cache.scoreKey = null; return; }
+    const key = `${s.round ? s.round.num : 0}-${sc.idx}-${s.mode}`;
+    if (this.cache.scoreKey === key) return;
+    this.cache.scoreKey = key;
+    const c = S.contesters.find(x => x.id === sc.id) || { name: sc.name, num: sc.num };
+    const edit = s.mode === 'scoreWait';
+    const val = k => (!edit && sc.scores ? sc.scores[k] : '');
+    box.innerHTML = `
+      <div class="cs-score-head">
+        <img src="${esc(avatarFor(c))}" alt="">
+        <div>
+          <div class="muted small">${sc.total > 1 ? `${esc(sc.role)} · person ${sc.idx + 1} of ${sc.total}` : 'Scores'}</div>
+          <b>#${sc.num} ${esc(sc.name)}</b>
+        </div>
+      </div>
+      <div class="cs-score-inputs">${sc.judges.map((j, k) => `
+        <label>${esc(j || `Judge ${k + 1}`)}
+          <input type="number" min="0" max="${sc.max}" step="any" data-j="${k}" value="${val(k)}" placeholder="0 – ${sc.max}" ${edit ? '' : 'disabled'}>
+        </label>`).join('')}
+      </div>
+      <div class="cs-score-foot">
+        <span class="cs-avg" id="csAvg"></span>
+        ${edit ? '<button class="btn btn-gold btn-lg" id="csScoreGo" disabled>✦ Show the score</button>'
+               : `<span class="muted">${s.mode === 'scoring' ? 'Showing on the audience screen…' : 'Shown. Press Next to continue.'}</span>`}
+      </div>`;
+    this.updateAvg(sc);
+    if (edit) { const first = $('#csScore input'); if (first) first.focus(); }
+  },
+
+  /** Check the typed scores and preview the average. */
+  readScores() {
+    const sc = this.status && this.status.score;
+    if (!sc) return null;
+    const vals = $$('#csScore input').map(x => x.value.trim());
+    const ok = vals.length && vals.every(v => v !== '' && !isNaN(+v) && +v >= 0 && +v <= sc.max);
+    return { sc, vals, ok };
+  },
+
+  updateAvg() {
+    const r = this.readScores();
+    if (!r) return;
+    const { sc, vals, ok } = r;
+    const go = byId('csScoreGo');
+    if (go) go.disabled = !ok;
+    const avg = ok ? vals.reduce((a, b) => a + +b, 0) / vals.length : null;
+    byId('csAvg').innerHTML = ok
+      ? `Average <b>${avg.toFixed(sc.decimals)}</b>`
+      : `<span class="muted">Enter a score from 0 to ${sc.max} for every judge</span>`;
+  },
+
+  sendScores() {
+    const r = this.readScores();
+    if (!r || !r.ok || this.status.mode !== 'scoreWait') return;
+    this.cmd('showScore', { scores: r.vals.map(Number) });
+    const go = byId('csScoreGo');
+    if (go) go.disabled = true;
   },
 
   /** Only touch the DOM when something changed, so buttons stay clickable. */
@@ -255,13 +330,15 @@ const Console = {
     byId('csNow').textContent = !on ? 'Nothing: the audience screen is not open' : s ? s.label : 'Connecting…';
     byId('csPrompt').textContent = on && s && s.prompt ? `On screen: “${s.prompt}”` : '';
 
-    const busy = !s || s.busy || ['timer', 'message', 'final', 'stopping'].includes(mode);
+    const busy = !s || s.busy || ['timer', 'message', 'final', 'stopping', 'scoreWait', 'scoring'].includes(mode);
     const nb = byId('csNext');
     nb.disabled = !on || busy;
     let nextLabel = 'Next';
     if (mode === 'standby') nextLabel = 'Start the opening';
     else if (mode === 'roll' || mode === 'ticketRoll') nextLabel = 'Stop the draw';
     else if (mode === 'timer') nextLabel = 'Timer running';
+    else if (mode === 'scoreWait') nextLabel = 'Enter the scores above';
+    else if (mode === 'scoring') nextLabel = 'Showing the scores…';
     else if (s && s.busy) nextLabel = 'Animating…';
     nb.querySelector('b').textContent = nextLabel;
 
@@ -274,6 +351,8 @@ const Console = {
       byId('csBar').style.width = `${Math.max(0, Math.min(100, (tm.remain / tm.total) * 100))}%`;
       byId('csBar').style.background = tm.color;
     }
+
+    this.renderScore(s);
 
     const r = s && !opening ? s.round : null;
     this.set('csRound', r ? `<div><span class="muted">Round ${r.num}:</span> ${r.team.map(esc).join(' &amp; ') || '—'}</div>

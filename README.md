@@ -63,6 +63,14 @@ In the console:
 - **Notes** shows your presenter notes for what is on screen. **Contesters** shows who is waiting in the current stage.
 - Redo this round, End this round and End this stage are at the bottom. **Show the waiting screen** puts the audience screen back to the title card.
 
+### Scoring
+
+Set the judges' names in **🗂 Structure → Judges** (three by default) and scoring options in **🧩 Format → Scoring** (on/off, highest score, seconds of suspense before the average, decimals).
+
+After a round's timers, the audience screen shows the first person's photo and name with a hidden card for each judge. In the console, type each judge's score (Enter moves to the next box) and click **Show the score**. On the audience screen the judges' cards flip one by one, a bar fills while the average is "calculated", then the average appears. Press **Next** for the partner, who is scored the same way. After the last person, the next key press starts the next round's draw, so the partner stops the spinner for the next first contester.
+
+Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. In one-screen mode, press a key on the waiting screen to open a small score form.
+
 ### One screen
 
 The contest fills this screen and you click or press keys on it. Choose whether to start with the opening or a stage.

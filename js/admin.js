@@ -432,16 +432,25 @@ const ResultsUI = {
     };
     byId('hExport').onclick = () => {
       const people = Math.max(1, ...S.history.map(h => histTeam(h).length));
+      const judges = Math.max(0, ...S.history.flatMap(h => histTeam(h).map(c => (c.scores || []).length)));
       const tks = Math.max(1, ...S.history.map(h => histTickets(h).length));
       const head = ['Round', 'Stage', 'Format'];
-      for (let i = 1; i <= people; i++) head.push(`Person ${i} ID`, `Person ${i}`);
+      for (let i = 1; i <= people; i++) {
+        head.push(`Person ${i} ID`, `Person ${i}`);
+        for (let j = 1; j <= judges; j++) head.push(`Person ${i} judge ${j}`);
+        if (judges) head.push(`Person ${i} average`);
+      }
       for (let i = 1; i <= tks; i++) head.push(`Ticket ${i}`, `Ticket ${i} title`);
       head.push('Time');
       const rows = [head];
       S.history.forEach(h => {
         const r = [h.round, h.stage || '', h.format || ''];
         const team = histTeam(h), tickets = histTickets(h);
-        for (let i = 0; i < people; i++) r.push(team[i]?.num ?? '', team[i]?.name ?? '');
+        for (let i = 0; i < people; i++) {
+          r.push(team[i]?.num ?? '', team[i]?.name ?? '');
+          for (let j = 0; j < judges; j++) r.push(team[i]?.scores?.[j] ?? '');
+          if (judges) r.push(team[i]?.avg != null ? +team[i].avg.toFixed(3) : '');
+        }
         for (let i = 0; i < tks; i++) r.push(tickets[i]?.num ?? '', tickets[i]?.title ?? '');
         r.push(new Date(h.at).toLocaleString());
         rows.push(r);
@@ -454,7 +463,8 @@ const ResultsUI = {
   render() {
     byId('hCount').textContent = `(${S.history.length})`;
     byId('hBody').innerHTML = S.history.slice().reverse().map(h => {
-      const team = histTeam(h).map(c => `<span class="who">#${c.num} ${esc(c.name)}</span>`).join('');
+      const team = histTeam(h).map(c => `<span class="who">#${c.num} ${esc(c.name)}${c.avg != null
+        ? ` <b class="score" title="${esc((c.scores || []).join(' · '))}">${c.avg.toFixed(2)}</b>` : ''}</span>`).join('');
       const tickets = histTickets(h).map(t => `<span class="who">#${t.num}${t.title ? ' ' + esc(t.title) : ''}</span>`).join('');
       return `<tr>
         <td><b>${h.round}</b></td>
@@ -464,6 +474,29 @@ const ResultsUI = {
         <td class="muted">${new Date(h.at).toLocaleString()}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="5" class="muted center">No rounds yet</td></tr>';
+    this.renderRanking();
+  },
+
+  /** Each stage's people sorted by their average score. */
+  renderRanking() {
+    const byStage = new Map();
+    S.history.forEach(h => histTeam(h).forEach(c => {
+      if (c.avg == null) return;
+      const key = h.stageId || h.stage || '';
+      if (!byStage.has(key)) byStage.set(key, { name: h.stage || 'Scores', people: new Map() });
+      const people = byStage.get(key).people, id = c.id || `${c.num}`;
+      const p = people.get(id) || { num: c.num, name: c.name, sum: 0, n: 0 };
+      p.sum += c.avg; p.n++;
+      people.set(id, p);
+    }));
+    const medal = i => ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
+    byId('hRank').innerHTML = [...byStage.values()].map(st => {
+      const list = [...st.people.values()].map(p => ({ ...p, avg: p.sum / p.n })).sort((a, b) => b.avg - a.avg);
+      return `<div class="panel rank-panel">
+        <h2>🏅 Ranking · ${esc(st.name)}</h2>
+        <ol class="rank">${list.map((p, i) => `<li><span class="rk">${medal(i)}</span><span class="rn">#${p.num} ${esc(p.name)}</span><b>${p.avg.toFixed(2)}</b></li>`).join('')}</ol>
+      </div>`;
+    }).join('');
   },
 };
 

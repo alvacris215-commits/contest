@@ -53,6 +53,13 @@
         <div class="flow" id="sFlow"></div>
       </div>
 
+      <div class="panel">
+        <h2>Judges</h2>
+        <p class="hint">Each judge gives every contester a score. You type the scores in the presenter console; the audience sees them appear one by one, then the average.</p>
+        <div class="phase-list" id="jList"></div>
+        <button class="btn" id="jAdd">＋ Add judge</button>
+      </div>
+
       <div class="list-head">
         <h2>Stages <span class="muted" id="sCount"></span></h2>
         <button class="btn btn-primary" id="sAdd">＋ Add stage</button>
@@ -251,6 +258,17 @@
         </div>
       </div>
 
+      <div class="panel">
+        <h2>5 · Scoring</h2>
+        <p class="hint">After the timers, each person is scored by the judges set in the Structure tab. After the last person's score, the next key press draws the next round.</p>
+        <div class="settings-grid">
+          <label class="check"><input type="checkbox" data-fmt="scoring"> Score each person after the round</label>
+          <label>Highest possible score<input type="number" min="1" max="1000" step="any" data-fmt="scoreMax"></label>
+          <label>Seconds of suspense before the average appears<input type="number" min="0" max="60" data-fmt="avgDelay"></label>
+          <label>Decimals in the average<input type="number" min="0" max="3" data-fmt="avgDecimals"></label>
+        </div>
+      </div>
+
       <p class="hint fmt-hint">In titles you can use <code>{round}</code> round number, <code>{name}</code> first person drawn, <code>{last}</code> latest person drawn, <code>{team}</code> everyone drawn so far, <code>{n}</code> and <code>{total}</code> ticket number and tickets per round.</p>
     </section>
 
@@ -265,10 +283,11 @@
       </div>
       <div class="panel table-panel">
         <table class="table">
-          <thead><tr><th>Round</th><th>People</th><th>Tickets</th><th>Format</th><th>Time</th></tr></thead>
+          <thead><tr><th>Round</th><th>People</th><th>Tickets</th><th>Stage</th><th>Time</th></tr></thead>
           <tbody id="hBody"></tbody>
         </table>
       </div>
+      <div class="rank-grid" id="hRank"></div>
     </section>
 
     <!-- ---------- SETTINGS ---------- -->
@@ -373,6 +392,7 @@
         </div>
       </div>
       <div class="cs-round" id="csRound"></div>
+      <div class="cs-score" id="csScore" hidden></div>
       <button class="cs-next" id="csNext"><b>Next</b><small>Click here or press any key</small></button>
       <div class="btn-row">
         <button class="btn btn-sm" id="csRedo" data-cmd="redo">↺ Redo this round</button>
@@ -541,6 +561,29 @@
       <div class="tm-paused" id="tmPaused">PAUSED</div>
     </section>
 
+    <!-- scoring -->
+    <section class="scr" id="scrScore">
+      <div class="round-label" id="scLabel"></div>
+      <div class="sc-person">
+        <div class="photo-wrap">
+          <div class="photo-frame" id="scPhoto"><img id="scImg" alt=""></div>
+          <div class="id-badge" id="scNum"></div>
+        </div>
+        <div class="sc-who">
+          <div class="pc-role" id="scRole"></div>
+          <div class="sc-name" id="scName"></div>
+        </div>
+      </div>
+      <div class="sc-judges" id="scJudges"></div>
+      <div class="avg-box" id="scAvg">
+        <small>Average</small>
+        <b id="scAvgVal">?</b>
+        <div class="avg-bar"><i></i></div>
+        <span class="avg-calc">Calculating the average…</span>
+      </div>
+      <div class="prompt" id="scPrompt"></div>
+    </section>
+
     <!-- round done -->
     <section class="scr" id="scrDone">
       <div class="done-trophy">🏆</div>
@@ -561,6 +604,16 @@
 
   <canvas id="fxCanvas"></canvas>
   <div id="flash"></div>
+
+  <div id="stageScore" hidden>
+    <div class="menu-box">
+      <h3>Scores for <span id="ssWho"></span></h3>
+      <div class="ss-inputs" id="ssInputs"></div>
+      <button id="ssGo">✦ Show the score</button>
+      <button id="ssCancel">Cancel</button>
+      <p class="menu-hint">Enter moves to the next judge · Esc closes</p>
+    </div>
+  </div>
 
   <div id="fsHint" hidden>⛶ Click here to show the contest fullscreen</div>
 

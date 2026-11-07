@@ -36,6 +36,7 @@ const Contest = (() => {
     mode: null, busy: false, gen: 0, roller: null, round: null,
     pool: [], tpool: [], slot: 0, phaseIdx: -1, tm: null, raf: 0, cd: null, cdFn: null, menu: false, f: null,
     remote: false, stageIdx: -1, explainOnly: false, revealed: 0, info: -1,
+    score: null,
   };
   const E = () => S.event;
   const stageNow = () => E().stages[st.stageIdx];
@@ -61,6 +62,14 @@ const Contest = (() => {
     byId('mRedo').onclick = redoRound;
     byId('mEnd').onclick = endRoundNow;
     byId('mExit').onclick = close;
+    byId('ssGo').onclick = submitScoreEntry;
+    byId('ssCancel').onclick = closeScoreEntry;
+    byId('ssInputs').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const ins = $$('#ssInputs input'), k = ins.indexOf(e.target);
+      if (k < ins.length - 1) ins[k + 1].focus(); else submitScoreEntry();
+    });
     document.addEventListener('fullscreenchange', () => { if (!byId('stage').hidden && st.mode === 'intro') TitleFX.finish(); });
     $$('.tm-controls button').forEach(b => b.onclick = () => { b.blur(); if (st.mode === 'timer') timerKey(b.dataset.k); });
     byId('ringFg').style.strokeDasharray = CIRC;
@@ -129,6 +138,7 @@ const Contest = (() => {
     f.slots.forEach((s, i) => steps.push({ key: 'p' + i, label: roleOf(i) }));
     if (r.tcount > 0) steps.push({ key: 't', label: tLabel() + (r.tcount > 1 ? (f.ticketFlow === 'each' ? ` 1/${r.tcount}` : ` ×${r.tcount}`) : '') });
     f.phases.forEach((p, i) => steps.push({ key: 'ph' + i, label: p.name, color: p.color }));
+    if (scoringOn()) steps.push({ key: 'sc', label: 'Score' });
     byId('stageSteps').innerHTML = steps.map(s =>
       `<span data-k="${s.key}"${s.color ? ` style="--sc:${esc(s.color)}"` : ''}>${esc(s.label)}</span>`
     ).join('<i>›</i>');
@@ -196,6 +206,10 @@ const Contest = (() => {
 
   function onKey(e) {
     if (byId('stage').hidden) return;
+    if (!byId('stageScore').hidden) {
+      if (e.key === 'Escape') { e.preventDefault(); closeScoreEntry(); }
+      return;
+    }
     if (IGNORE.has(e.key) || e.ctrlKey || e.metaKey) return;
     if (e.key === 'Escape') { e.preventDefault(); toggleMenu(); return; }
     e.preventDefault();
@@ -205,7 +219,7 @@ const Contest = (() => {
 
   function onPointer(e) {
     if (e.button !== 0 || st.menu) return;
-    if (e.target.closest('button, #stageToolbar, #stageMenu, .msg-actions, .tm-controls, #fsHint')) return;
+    if (e.target.closest('button, #stageToolbar, #stageMenu, .msg-actions, .tm-controls, #fsHint, #stageScore')) return;
     if (st.mode === 'timer') return;
     action('click');
   }
@@ -232,6 +246,8 @@ const Contest = (() => {
       case 'timer': return timerKey(key);
       case 'phaseWait': return startPhase(st.phaseIdx + 1);
       case 'done': return newRound();
+      case 'scoreWait': return st.remote ? null : openScoreEntry();
+      case 'scoreShown': return st.score.idx + 1 < st.round.team.length ? scoreWait(st.score.idx + 1) : newRound();
     }
   }
 
@@ -856,7 +872,7 @@ const Contest = (() => {
     const h = {
       id: uid(), round: r.num, at: Date.now(), format: F().name,
       stage: s ? s.name : '', stageId: s ? s.id : '',
-      team: r.team.map(c => ({ num: c.num, name: c.name })), tickets: [],
+      team: r.team.map(c => ({ id: c.id, num: c.num, name: c.name })), tickets: [],
     };
     S.history.push(h);
     r.hist = h;
@@ -946,14 +962,14 @@ const Contest = (() => {
     byId('scrTimer').classList.toggle('no-problem', !shown.length);
     byId('tmTeam').innerHTML = teamChips();
     FX.stopEmitters();
-    if (!F().phases.length) return moreTickets() ? startTicketRoll() : showDone();
+    if (!F().phases.length) return moreTickets() ? startTicketRoll() : afterRound();
     show('scrTimer');
     startPhase(0);
   }
 
   function startPhase(i) {
     const p = F().phases[i];
-    if (!p) return showDone();
+    if (!p) return afterRound();
     st.phaseIdx = i;
     const total = Math.max(1, p.sec) * 1000;
     st.tm = { total, end: performance.now() + total, paused: false, remain: total, lastSec: null };
@@ -1062,8 +1078,159 @@ const Contest = (() => {
       byId('tmPrompt').innerHTML = `<span class="key">⌨</span> Press any key to draw ${esc(tLabel().toLowerCase())} ${k} of ${st.round.tcount}`;
       st.mode = 'ticketNext';
     } else {
-      showDone();
+      afterRound();
     }
+  }
+
+  /* ---------------- flow: scoring ---------------- */
+  const scoringOn = () => F().scoring && E().judges.length > 0;
+  const fmtScore = v => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
+
+  /** After the timers: score each person, or show the round-done screen. */
+  function afterRound() {
+    return scoringOn() && st.round && st.round.team.length ? scoreWait(0) : showDone();
+  }
+
+  /** A person waits for the judges' scores (typed in the presenter console). */
+  function scoreWait(i) {
+    reset();
+    const r = st.round, c = r.team[i], judges = E().judges;
+    st.score = { idx: i, scores: null, avg: null };
+    stepsOn(true);
+    setStep('sc', r.team.length > 1 ? `Score ${i + 1}/${r.team.length}` : 'Score');
+    byId('scLabel').textContent = `${T(F().roundLabel)} · Scores`;
+    byId('scRole').textContent = r.team.length > 1 ? roleOf(i) : '';
+    byId('scImg').src = avatarFor(c);
+    byId('scNum').textContent = '#' + c.num;
+    byId('scName').innerHTML = words(c.name);
+    byId('scJudges').className = `sc-judges n${Math.min(judges.length, 6)}`;
+    byId('scJudges').innerHTML = judges.map((j, k) => `
+      <div class="jc" style="--k:${k}">
+        <div class="jc-in">
+          <div class="jc-face jc-back"><span>?</span></div>
+          <div class="jc-face jc-front"><b data-v></b><small>/ ${fmtScore(F().scoreMax)}</small></div>
+        </div>
+        <div class="jc-name">${esc(j || `Judge ${k + 1}`)}</div>
+      </div>`).join('');
+    const avg = byId('scAvg');
+    avg.className = 'avg-box';
+    avg.style.setProperty('--delay', `${F().avgDelay}s`);
+    byId('scAvgVal').textContent = '?';
+    byId('scPrompt').textContent = st.remote ? 'Waiting for the judges…' : 'Press any key to enter the scores';
+    replay('scrScore'); show('scrScore');
+    FX.warpTo(0.05);
+    Sound.whoosh();
+    st.mode = 'scoreWait';
+    const g = st.gen;
+    setTimeout(() => { if (g === st.gen) FX.sparkle(byId('scPhoto'), 4000); }, 900);
+  }
+
+  /** Count a number up from 0, like a scoreboard. */
+  function countUp(el, to, decimals, ms) {
+    const t0 = performance.now();
+    return new Promise(res => {
+      const step = now => {
+        const p = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+        el.textContent = (to * e).toFixed(decimals);
+        if (p < 1) requestAnimationFrame(step);
+        else { el.textContent = to.toFixed(decimals); res(); }
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  async function saveScores(i, scores, avg) {
+    const r = st.round;
+    if (!r.hist) return;
+    const entry = r.hist.team[i];
+    if (entry) { entry.scores = scores; entry.avg = avg; }
+    try { await DB.set('history', S.history); } catch (e) { console.error(e); }
+    saved();
+  }
+
+  /** Reveal each judge's score, then (after the suspense delay) the average. */
+  async function revealScores(raw) {
+    if (st.mode !== 'scoreWait' || st.busy) return;
+    const judges = E().judges;
+    const scores = judges.map((_, k) => Math.max(0, Math.min(F().scoreMax, Number(raw[k]) || 0)));
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const g = st.gen, i = st.score.idx;
+    st.busy = true; st.mode = 'scoring';
+    st.score.scores = scores;
+    byId('scPrompt').textContent = '';
+    await saveScores(i, scores, avg);
+
+    const cards = $$('#scJudges .jc');
+    for (let k = 0; k < cards.length; k++) {
+      if (g !== st.gen) return;
+      const card = cards[k], v = card.querySelector('[data-v]');
+      v.textContent = '0';
+      card.classList.add('open');
+      Sound.lock();
+      const dec = Number.isInteger(scores[k]) ? 0 : Math.min(2, String(scores[k]).split('.')[1].length);
+      countUp(v, scores[k], dec, 700);
+      await wait(380);
+      if (g !== st.gen) return;
+      const [x, y] = center(card);
+      FX.burst(x, y, { count: 70, speed: [2, 9], life: [0.6, 1.4], gravity: 0.05 });
+      FX.burst(x, y, { count: 16, shape: 'star', colors: FX.GOLD, speed: [1, 5], gravity: 0.02 });
+      FX.shockwave(x, y, { max: card.offsetWidth * 1.3, dur: 0.6, width: 2 });
+      await wait(820);
+    }
+    if (g !== st.gen) return;
+
+    // suspense before the average
+    const box = byId('scAvg');
+    box.classList.add('thinking');
+    const delay = F().avgDelay * 1000;
+    if (delay > 1300) setTimeout(() => { if (g === st.gen) Sound.rise(); }, delay - 900);
+    await wait(delay);
+    if (g !== st.gen) return;
+
+    box.classList.remove('thinking');
+    box.classList.add('shown');
+    st.score.avg = avg;
+    flash(0.6);
+    Sound.boom(); Sound.chime();
+    const [x, y] = center(box);
+    FX.shockwave(x, y);
+    FX.shockwave(x, y, { dur: 1.4, color: '196,181,253', width: 3 });
+    FX.burst(x, y, { count: 220, speed: [3, 16], life: [0.8, 2], gravity: 0.05 });
+    FX.burst(x, y, { count: 60, shape: 'star', colors: FX.GOLD, speed: [1, 8], gravity: 0.015 });
+    await countUp(byId('scAvgVal'), avg, F().avgDecimals, 1100);
+    if (g !== st.gen) return;
+    Sound.fanfare();
+    FX.confetti(2600);
+    FX.sparkle(box, 5000);
+    await wait(1200);
+    if (g !== st.gen) return;
+
+    const r = st.round, next = r.team[i + 1];
+    byId('scPrompt').innerHTML = `<span class="key">⌨</span> ${next
+      ? `Press any key for ${esc(next.name)}'s score`
+      : waiting().length ? 'Press any key to draw the next round' : 'Press any key to finish the stage'}`;
+    st.mode = 'scoreShown';
+    st.busy = false;
+  }
+
+  /* one-screen mode: a small form on the stage itself */
+  function openScoreEntry() {
+    const judges = E().judges, max = F().scoreMax;
+    byId('ssWho').textContent = `${st.round.team[st.score.idx].name}`;
+    byId('ssInputs').innerHTML = judges.map((j, k) => `
+      <label>${esc(j || `Judge ${k + 1}`)}<input type="number" min="0" max="${max}" step="any" data-j="${k}" placeholder="0 – ${fmtScore(max)}"></label>`).join('');
+    byId('stageScore').hidden = false;
+    showUI();
+    const first = $('#ssInputs input');
+    if (first) first.focus();
+  }
+  function closeScoreEntry() { byId('stageScore').hidden = true; }
+  function submitScoreEntry() {
+    const vals = $$('#ssInputs input').map(x => x.value.trim());
+    const max = F().scoreMax;
+    if (vals.some(v => v === '' || isNaN(+v) || +v < 0 || +v > max)) return toast(`Enter a score from 0 to ${fmtScore(max)} for every judge`, 'error');
+    closeScoreEntry();
+    revealScores(vals.map(Number));
   }
 
   /* ---------------- flow: round done ---------------- */
@@ -1103,6 +1270,7 @@ const Contest = (() => {
       case 'endRound': return endRoundNow();
       case 'endStage': return st.stageIdx >= 0 ? stageEnd() : null;
       case 'standby': return standby();
+      case 'showScore': return revealScores(c.scores || []);
       case 'resetStage': {
         const s = E().stages[c.i];
         if (!s) return;
@@ -1132,6 +1300,9 @@ const Contest = (() => {
       case 'countdown': return `${round}Countdown to the timer`;
       case 'timer': case 'phaseEnd': case 'phaseWait': return `${round}${F().phases[st.phaseIdx]?.name || 'Timer'}`;
       case 'doneAnim': case 'done': return `${round}Round complete`;
+      case 'scoreWait': return `${round}Waiting for scores: ${r.team[st.score.idx]?.name || ''}`;
+      case 'scoring': return `${round}Showing the scores of ${r.team[st.score.idx]?.name || ''}`;
+      case 'scoreShown': return `${round}Score shown: ${r.team[st.score.idx]?.name || ''}`;
       case 'stageEnd': return `${stage}Stage complete`;
       case 'final': return 'Final screen';
       case 'message': return 'Message on screen';
@@ -1150,6 +1321,12 @@ const Contest = (() => {
       round: r ? { num: r.num, team: r.team.map(c => `#${c.num} ${c.name}`), tickets: r.tickets.map(t => `#${t.num}${t.title ? ' ' + t.title : ''}`), committed: r.committed } : null,
       timer: tm && p ? { name: p.name, color: p.color, remain: Math.max(0, Math.round(tm.paused ? tm.remain : tm.end - performance.now())), total: tm.total, paused: tm.paused } : null,
       fullscreen: !!document.fullscreenElement,
+      score: ['scoreWait', 'scoring', 'scoreShown'].includes(st.mode) && r ? {
+        idx: st.score.idx, total: r.team.length, id: r.team[st.score.idx].id,
+        name: r.team[st.score.idx].name, num: r.team[st.score.idx].num, role: roleOf(st.score.idx),
+        judges: E().judges, max: F().scoreMax, decimals: F().avgDecimals,
+        scores: st.score.scores, avg: st.score.avg,
+      } : null,
     };
   }
 
