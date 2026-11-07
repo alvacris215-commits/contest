@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contest Manager</title>
+<link rel="stylesheet" href="css/admin.css">
+<link rel="stylesheet" href="css/stage.css">
+</head>
+<body>
+
+<!-- ======================= DASHBOARD ======================= -->
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">✦</div>
+      <div class="brand-text">
+        <h1 id="brandTitle">Contest Manager</h1>
+        <p id="brandSub">Image description contest</p>
+      </div>
+    </div>
+    <div class="top-stats" id="topStats"></div>
+    <button id="btnStart" class="btn btn-gold btn-lg">▶ Start Contest</button>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="contesters" class="active">👥 Contesters</button>
+    <button data-tab="tickets">🎟 Tickets / Problems</button>
+    <button data-tab="timers">⏱ Timers</button>
+    <button data-tab="results">🏆 Rounds</button>
+    <button data-tab="settings">⚙ Settings</button>
+  </nav>
+
+  <main>
+    <!-- ---------- CONTESTERS ---------- -->
+    <section class="tab active" id="tab-contesters">
+      <div class="panel">
+        <h2 id="cFormTitle">Register a contester</h2>
+        <div class="form-row">
+          <div class="drop photo-drop" id="cPhotoDrop" title="Click or drop a photo">
+            <img id="cPhotoPreview" alt="">
+            <span class="drop-hint">📷<br>Click or drop photo</span>
+            <input type="file" id="cPhoto" accept="image/*" hidden>
+          </div>
+          <div class="fields">
+            <div class="field-grid c-fields">
+              <label>ID number<input type="number" id="cNum" min="1"></label>
+              <label>Full name<input type="text" id="cName" placeholder="e.g. Anna Smith" autocomplete="off"></label>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="cSave">Add contester</button>
+              <button class="btn" id="cRemovePhoto">Remove photo</button>
+              <button class="btn" id="cCancel" hidden>Cancel</button>
+            </div>
+            <p class="hint">Faster: <button class="link" id="cBulkBtn">add many contesters at once from photos</button>. Each file name becomes the person's name.</p>
+            <input type="file" id="cBulk" accept="image/*" multiple hidden>
+          </div>
+        </div>
+      </div>
+
+      <div class="list-head">
+        <h2>Contesters <span class="muted" id="cCount"></span></h2>
+        <div class="btn-row">
+          <input type="search" id="cSearch" placeholder="Search name or ID…">
+          <button class="btn btn-sm" id="cResetPool">↺ Mark all as waiting</button>
+        </div>
+      </div>
+      <div class="grid c-grid" id="cGrid"></div>
+    </section>
+
+    <!-- ---------- TICKETS ---------- -->
+    <section class="tab" id="tab-tickets">
+      <div class="panel">
+        <h2 id="tFormTitle">Create a ticket (problem)</h2>
+        <div class="ticket-form">
+          <div class="fields">
+            <div class="field-grid t-fields">
+              <label>Ticket no.<input type="number" id="tNum" min="1"></label>
+              <label>Title (optional)<input type="text" id="tTitle" placeholder="e.g. Describe the picture"></label>
+              <label>Content type
+                <select id="tType">
+                  <option value="image">Image only</option>
+                  <option value="both">Image + text</option>
+                  <option value="text">Text only</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="t-image-field">
+              <div class="drop img-drop" id="tImageDrop">
+                <img id="tImagePreview" alt="">
+                <span class="drop-hint">🖼 Click or drop an image</span>
+                <input type="file" id="tImage" accept="image/*" hidden>
+              </div>
+              <button class="btn btn-sm" id="tRemoveImg">Remove image</button>
+            </div>
+
+            <label class="t-text-field">Text
+              <textarea id="tText" rows="4" placeholder="The problem text…"></textarea>
+            </label>
+
+            <div class="field-grid t-style">
+              <label class="t-text-field">Text size
+                <select id="tSize">
+                  <option value="s">Small</option>
+                  <option value="m">Medium</option>
+                  <option value="l" selected>Large</option>
+                  <option value="xl">Extra large</option>
+                </select>
+              </label>
+              <label class="t-text-field">Alignment
+                <select id="tAlign">
+                  <option value="center">Center</option>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </select>
+              </label>
+              <label>Text color<input type="color" id="tFg" value="#ffffff"></label>
+              <label>Background<input type="color" id="tBg" value="#140f33"></label>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn btn-primary" id="tSave">Add ticket</button>
+              <button class="btn" id="tCancel" hidden>Cancel</button>
+            </div>
+            <p class="hint">Faster: <button class="link" id="tBulkBtn">create many image tickets at once</button>. Each image becomes its own ticket.</p>
+            <input type="file" id="tBulk" accept="image/*" multiple hidden>
+          </div>
+          <div class="t-preview-wrap">
+            <div class="muted small">Live preview</div>
+            <div class="t-preview" id="tPreview"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="list-head">
+        <h2>Tickets <span class="muted" id="tCount"></span></h2>
+        <div class="btn-row">
+          <button class="btn btn-sm" id="tResetUsed">↺ Mark all as unused</button>
+        </div>
+      </div>
+      <div class="grid t-grid" id="tGrid"></div>
+    </section>
+
+    <!-- ---------- TIMERS ---------- -->
+    <section class="tab" id="tab-timers">
+      <div class="panel">
+        <h2>Timer phases</h2>
+        <p class="hint">The phases run in order after a ticket is drawn. For example: Preparing → Presenting → Questions.</p>
+        <div id="phaseList" class="phase-list"></div>
+        <button class="btn" id="phaseAdd">＋ Add phase</button>
+      </div>
+      <div class="panel">
+        <h2>Timer behaviour</h2>
+        <div class="settings-grid">
+          <label class="check"><input type="checkbox" data-setting="autoAdvance"> Start the next phase automatically, with a countdown</label>
+          <label>Countdown before a phase starts automatically (seconds)<input type="number" min="1" max="60" data-setting="autoDelay"></label>
+          <label>Turn orange when this many seconds are left<input type="number" min="0" data-setting="warnAt"></label>
+          <label>Turn red and pulse when this many seconds are left<input type="number" min="0" data-setting="dangerAt"></label>
+          <label>Beep for each of the last … seconds<input type="number" min="0" max="30" data-setting="beepLast"></label>
+        </div>
+        <div class="keys">
+          <b>Keys while a timer is running:</b>
+          <span><kbd>Space</kbd> pause/resume</span>
+          <span><kbd>Enter</kbd> / <kbd>→</kbd> end this phase now</span>
+          <span><kbd>↑</kbd> add 10 s</span>
+          <span><kbd>↓</kbd> remove 10 s</span>
+          <span><kbd>Esc</kbd> menu</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- RESULTS ---------- -->
+    <section class="tab" id="tab-results">
+      <div class="list-head">
+        <h2>Completed rounds <span class="muted" id="hCount"></span></h2>
+        <div class="btn-row">
+          <button class="btn btn-sm" id="hExport">⬇ Export CSV</button>
+          <button class="btn btn-sm btn-danger" id="hClear">Clear history</button>
+        </div>
+      </div>
+      <div class="panel table-panel">
+        <table class="table">
+          <thead><tr><th>Round</th><th>Contester</th><th>Partner</th><th>Ticket</th><th>Time</th></tr></thead>
+          <tbody id="hBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- SETTINGS ---------- -->
+    <section class="tab" id="tab-settings">
+      <div class="panel">
+        <h2>Contest</h2>
+        <div class="settings-grid">
+          <label>Contest title<input type="text" data-setting="title"></label>
+          <label>Subtitle<input type="text" data-setting="subtitle" placeholder="e.g. Spring Championship 2026"></label>
+          <label>Pause before the selected person is revealed (milliseconds)<input type="number" min="0" step="100" data-setting="revealDelay"></label>
+          <label class="check"><input type="checkbox" data-setting="uniqueTickets"> Each ticket can be drawn only once. When all have been used, the deck reshuffles.</label>
+          <label class="check"><input type="checkbox" data-setting="sound"> Sound effects</label>
+          <label class="check"><input type="checkbox" data-setting="autoFullscreen"> Go fullscreen when the contest starts</label>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Backup &amp; restore</h2>
+        <p class="hint">All data is stored in this browser and works without internet. Export a backup file to keep a copy or move the contest to another computer.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="bExport">⬇ Export backup (.json)</button>
+          <button class="btn" id="bImportBtn">⬆ Import backup</button>
+          <input type="file" id="bImport" accept=".json,application/json" hidden>
+        </div>
+        <p class="hint" id="storageInfo"></p>
+      </div>
+      <div class="panel danger-zone">
+        <h2>Danger zone</h2>
+        <div class="btn-row">
+          <button class="btn btn-danger" id="bResetAll">Start a new session: everyone waiting, tickets unused, history cleared</button>
+          <button class="btn btn-danger" id="bErase">Erase ALL data</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- image / ticket viewer -->
+<div id="viewer" class="viewer" hidden><div class="viewer-box" id="viewerBox"></div></div>
+<div id="toasts"></div>
+
+<!-- ======================= STAGE ======================= -->
+<div id="stage" hidden>
+  <canvas id="bgCanvas"></canvas>
+
+  <div id="screens">
+    <!-- intro -->
+    <section class="scr" id="scrIntro">
+      <div class="intro-emblem"><span>✦</span></div>
+      <h1 class="intro-title" id="introTitle"></h1>
+      <p class="intro-sub" id="introSub"></p>
+      <p class="intro-info" id="introInfo"></p>
+      <div class="prompt">Press any key to begin</div>
+    </section>
+
+    <!-- number roller -->
+    <section class="scr" id="scrRoll">
+      <div class="round-label" id="rollLabel"></div>
+      <h2 class="scr-title" id="rollTitle"></h2>
+      <div class="roll-note" id="rollNote"></div>
+      <div class="roll-row">
+        <div class="side-card" id="rollLeft" hidden></div>
+        <div class="orb" id="orb">
+          <div class="orb-glow"></div>
+          <div class="orb-ring r1"></div>
+          <div class="orb-ring r2"></div>
+          <div class="orb-ring r3"></div>
+          <div class="orb-core"></div>
+          <div class="orb-num" id="orbNum">?</div>
+        </div>
+        <div class="side-card" id="rollRight" hidden></div>
+      </div>
+      <div class="pool-strip" id="poolStrip"></div>
+      <div class="prompt" id="rollPrompt"></div>
+    </section>
+
+    <!-- reveal -->
+    <section class="scr" id="scrReveal">
+      <div class="rays"></div>
+      <div class="halo"></div>
+      <div class="reveal-card">
+        <div class="reveal-role" id="revealRole"></div>
+        <div class="photo-wrap">
+          <div class="photo-frame big" id="revealPhoto"><img id="revealImg" alt=""></div>
+          <div class="id-badge" id="revealNum"></div>
+        </div>
+        <div class="reveal-name" id="revealName"></div>
+      </div>
+      <div class="prompt" id="revealPrompt"></div>
+    </section>
+
+    <!-- pair -->
+    <section class="scr" id="scrPair">
+      <div class="round-label" id="pairLabel"></div>
+      <h2 class="scr-title" id="pairTitle"></h2>
+      <div class="pair-row">
+        <div class="pair-slot pa" id="pairA"></div>
+        <div class="pair-link" id="pairLink"><div class="beam"></div><div class="amp">&amp;</div></div>
+        <div class="pair-slot pb" id="pairB"></div>
+      </div>
+      <div class="prompt" id="pairPrompt"></div>
+    </section>
+
+    <!-- ticket draw -->
+    <section class="scr" id="scrTickets">
+      <div class="team-chips" id="tkTeam"></div>
+      <h2 class="scr-title">Draw your ticket</h2>
+      <div class="roll-note" id="tkNote"></div>
+      <div class="tk-grid" id="tkGrid"></div>
+      <div class="prompt" id="tkPrompt"></div>
+    </section>
+
+    <!-- ticket reveal -->
+    <section class="scr" id="scrTicketReveal">
+      <div class="big-ticket" id="bigTicket">
+        <div class="bt-inner" id="btInner">
+          <div class="bt-face bt-back"><span class="tk-star">✦</span><b id="btNum"></b><small>TICKET</small></div>
+          <div class="bt-face bt-front" id="btFront"></div>
+        </div>
+      </div>
+      <div class="prompt" id="btPrompt"></div>
+    </section>
+
+    <!-- timer -->
+    <section class="scr" id="scrTimer">
+      <div class="timer-layout">
+        <div class="tm-problem" id="tmProblem"></div>
+        <div class="tm-side">
+          <div class="team-chips" id="tmTeam"></div>
+          <div class="tm-steps" id="tmSteps"></div>
+          <div class="tm-phase" id="tmPhase"></div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 200 200" class="ring">
+              <circle class="ring-bg" cx="100" cy="100" r="90"/>
+              <circle class="ring-fg" id="ringFg" cx="100" cy="100" r="90"/>
+            </svg>
+            <div class="tm-time" id="tmTime">0:00</div>
+          </div>
+          <div class="prompt small" id="tmPrompt"></div>
+          <div class="tm-controls">
+            <button data-k=" " title="Pause / resume (Space)">⏯</button>
+            <button data-k="ArrowDown" title="−10 seconds (↓)">−10s</button>
+            <button data-k="ArrowUp" title="+10 seconds (↑)">+10s</button>
+            <button data-k="Enter" title="End this phase now (Enter)">⏭</button>
+          </div>
+        </div>
+      </div>
+      <div class="tm-banner" id="tmBanner"></div>
+      <div class="tm-paused" id="tmPaused">PAUSED</div>
+    </section>
+
+    <!-- round done -->
+    <section class="scr" id="scrDone">
+      <div class="done-trophy">🏆</div>
+      <h2 class="scr-title" id="doneTitle"></h2>
+      <div class="team-chips large" id="doneTeam"></div>
+      <p class="done-info" id="doneInfo"></p>
+      <div class="prompt" id="donePrompt"></div>
+    </section>
+
+    <!-- message -->
+    <section class="scr" id="scrMessage">
+      <h2 class="scr-title" id="msgTitle"></h2>
+      <p class="done-info" id="msgText"></p>
+      <div class="msg-actions" id="msgActions"></div>
+    </section>
+  </div>
+
+  <canvas id="fxCanvas"></canvas>
+  <div id="flash"></div>
+
+  <div id="stageToolbar">
+    <button id="tbFull" title="Fullscreen">⛶</button>
+    <button id="tbSound" title="Sound on/off">🔊</button>
+    <button id="tbMenu" title="Menu (Esc)">☰</button>
+  </div>
+
+  <div id="stageMenu" hidden>
+    <div class="menu-box">
+      <h3>Contest menu</h3>
+      <button id="mResume">▶ Resume</button>
+      <button id="mRedo">↺ Redo this round (put the people and ticket back)</button>
+      <button id="mEnd">⏹ End this round now</button>
+      <button id="mExit">✕ Exit to dashboard</button>
+      <p class="menu-hint">Press Esc to close</p>
+    </div>
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/db.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/contest.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
