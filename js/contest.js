@@ -366,12 +366,26 @@ const Contest = (() => {
     const grid = byId('stGrid');
     grid.className = `st-grid n${Math.min(n, 6)}`;
     grid.innerHTML = stages.map((s, i) => stageCard(s, i)).join('<div class="sc-arrow">➜</div>');
+    fitCards();
     st.revealed = 0;
     byId('stPrompt').textContent = 'Click to reveal stage 1';
     replay('scrStructure'); show('scrStructure');
     FX.warpTo(0.2);
     Sound.whoosh();
     st.mode = 'structure';
+  }
+
+  /** Shrink a card's text step by step until everything fits inside it. */
+  function fitCards() {
+    $$('#stGrid .sc').forEach(card => {
+      const front = card.querySelector('.sc-front');
+      let fit = 1;
+      card.style.setProperty('--fit', fit);
+      while (front.scrollHeight > front.clientHeight + 1 && fit > 0.5) {
+        fit = +(fit - 0.05).toFixed(2);
+        card.style.setProperty('--fit', fit);
+      }
+    });
   }
 
   async function revealNext() {
