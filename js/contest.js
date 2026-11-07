@@ -198,7 +198,8 @@ const Contest = (() => {
   }
   function availableTickets() {
     const d = deck();
-    return F().uniqueTickets ? (d.filter(t => !t.used).length || d.length) : d.length;
+    const sid = stageNow()?.id;
+    return F().uniqueTickets ? (d.filter(t => !isUsed(t, sid)).length || d.length) : d.length;
   }
 
   /* ---------------- input ---------------- */
@@ -714,7 +715,7 @@ const Contest = (() => {
     const taken = new Set(st.round.tickets.map(t => t.id));
     const all = deck().filter(t => !taken.has(t.id));
     if (!F().uniqueTickets) return { list: all, reshuffle: false };
-    const unused = all.filter(t => !t.used);
+    const unused = all.filter(t => !isUsed(t, stageNow().id));
     return unused.length ? { list: unused, reshuffle: false } : { list: all, reshuffle: all.length > 0 };
   }
 
@@ -867,7 +868,8 @@ const Contest = (() => {
   async function commitRound() {
     const r = st.round;
     if (!r || r.committed) return;
-    r.undo = { done: {}, used: Object.fromEntries(S.tickets.map(x => [x.id, !!x.used])) };
+    const sid = stageNow()?.id;
+    r.undo = { done: {}, sid, used: Object.fromEntries(S.tickets.map(x => [x.id, isUsed(x, sid)])) };
     r.team.forEach(c => { r.undo.done[c.id] = isDone(c); setDone(c, true); });
     const s = stageNow();
     const h = {
@@ -892,10 +894,10 @@ const Contest = (() => {
       if (reshuffle) {
         const taken = new Set(r.tickets.map(x => x.id));
         changed = deck().filter(x => !taken.has(x.id));
-        changed.forEach(x => { x.used = false; });
+        changed.forEach(x => setUsed(x, false, stageNow().id));
         changed.push(t);
       }
-      t.used = true;
+      setUsed(t, true, stageNow().id);
       if (!reshuffle) changed = [t];
     }
     r.hist.tickets.push({ num: t.num, title: t.title || '' });
@@ -915,7 +917,7 @@ const Contest = (() => {
     }
     for (const t of S.tickets) {
       const u = r.undo.used[t.id];
-      if (u !== undefined && !!t.used !== u) { t.used = u; tch.push(t); }
+      if (u !== undefined && isUsed(t, r.undo.sid) !== u) { setUsed(t, u, r.undo.sid); tch.push(t); }
     }
     S.history = S.history.filter(h => h.id !== r.hist.id);
     r.committed = false;

@@ -427,3 +427,16 @@ body.consoling #app { display: none; }
 .cs-score-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cs-avg { font-size: 16px; }
 .cs-avg b { font-size: 26px; color: var(--gold); margin-left: 6px; }
+
+/* ---------- tickets: per-stage ticks ---------- */
+.t-stages { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: rgba(0, 0, 0, .2); border: 1px solid var(--line); }
+.t-stage-checks { display: flex; flex-direction: column; gap: 6px; }
+.t-stagepills { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 0 12px 12px; }
+.sp {
+  min-width: 34px; height: 28px; padding: 0 8px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700;
+  border: 1px dashed rgba(255, 255, 255, .25); background: transparent; color: var(--muted);
+}
+.sp:hover { border-color: var(--violet); color: var(--text); }
+.sp.on { border-style: solid; border-color: rgba(52, 211, 153, .6); background: rgba(52, 211, 153, .16); color: #6ee7b7; }
+.sp.cur { box-shadow: 0 0 0 2px rgba(245, 196, 81, .55); }
+.t-card.not-here .t-thumb { opacity: .4; }

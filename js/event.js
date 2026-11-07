@@ -93,8 +93,16 @@ function stageFacts(stage) {
   return out;
 }
 
-/** Tickets a stage can draw: its own tickets plus tickets for all stages. */
-const stageDeck = stage => S.tickets.filter(t => !t.stageId || (stage && t.stageId === stage.id));
+/** Is a ticket ticked for a stage? */
+const inStage = (t, stageId) => (t.stages || []).includes(stageId);
+/** Tickets a stage can draw: the ones ticked for it. */
+const stageDeck = stage => (stage ? S.tickets.filter(t => inStage(t, stage.id)) : []);
+/** Per-stage "used" marks on tickets, like contesters' "presented" marks. */
+const isUsed = (t, stageId = S.activeStage) => !!(t.usedIn && t.usedIn[stageId]);
+function setUsed(t, v, stageId = S.activeStage) {
+  t.usedIn = { ...(t.usedIn || {}) };
+  if (v) t.usedIn[stageId] = true; else delete t.usedIn[stageId];
+}
 
 /** People of one stage sorted by their average score (ties share a place). */
 function stageRanking(stageId) {

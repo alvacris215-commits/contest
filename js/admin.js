@@ -65,6 +65,7 @@ const ContestersUI = {
       S.activeStage = e.target.value;
       await saveActiveStage();
       this.render(); Admin.header();
+      TicketsUI.renderStageOptions();
     };
     this.renderStageSelect();
     byId('cGrid').onclick = e => {
@@ -227,18 +228,40 @@ const TicketsUI = {
     byId('tBulkBtn').onclick = () => byId('tBulk').click();
     byId('tBulk').onchange = async e => { await this.bulk([...e.target.files]); e.target.value = ''; };
     byId('tResetUsed').onclick = async () => {
-      if (!confirm('Mark every ticket as unused?')) return;
-      S.tickets.forEach(t => { t.used = false; });
+      const st = curStage();
+      if (!confirm(`Mark every ticket as unused in ${st.name}?`)) return;
+      S.tickets.forEach(t => setUsed(t, false, st.id));
       await DB.putMany('tickets', S.tickets);
       this.render(); Admin.header();
-      toast('All tickets are back in the deck');
+      toast(`All tickets are back in the deck for ${st.name}`);
+    };
+    byId('tStageSel').onchange = async e => {
+      S.activeStage = e.target.value;
+      await saveActiveStage();
+      ContestersUI.renderStageSelect(); ContestersUI.render();
+      this.render(); Admin.header();
+    };
+    byId('tCheckAll').onclick = async () => {
+      const st = curStage();
+      S.tickets.forEach(t => { if (!inStage(t, st.id)) t.stages = [...(t.stages || []), st.id]; });
+      await DB.putMany('tickets', S.tickets);
+      this.render(); Admin.header();
+      toast(`All ${S.tickets.length} tickets are ticked for ${st.name}`);
+    };
+    byId('tUncheckAll').onclick = async () => {
+      const st = curStage();
+      if (!confirm(`Untick every ticket for ${st.name}? The stage will then have no tickets to draw.`)) return;
+      S.tickets.forEach(t => { t.stages = (t.stages || []).filter(id => id !== st.id); });
+      await DB.putMany('tickets', S.tickets);
+      this.render(); Admin.header();
     };
     byId('tGrid').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b) return;
-      this[b.dataset.act](b.closest('[data-id]').dataset.id);
+      this[b.dataset.act](b.closest('[data-id]').dataset.id, b);
     };
-    this.renderStageOptions('');
+    this.formStages = S.event.stages.map(s => s.id);
+    this.renderStageOptions();
     this.resetForm();
     this.render();
   },
@@ -272,7 +295,7 @@ const TicketsUI = {
       fg: byId('tFg').value,
       bg: byId('tBg').value,
       image: this.image,
-      stageId: byId('tStage').value,
+      stages: this.checkedStages(),
     };
   },
 
@@ -308,10 +331,11 @@ const TicketsUI = {
     if (f.type !== 'text' && !f.image && f.type === 'image') return toast('Please add an image, or change the type to text', 'error');
     if (f.type === 'text' && !f.text.trim()) return toast('Please write the ticket text', 'error');
     if (f.type === 'both' && !f.image && !f.text.trim()) return toast('Please add an image or text', 'error');
+    if (!f.stages.length) toast('This ticket is not ticked for any stage, so it will never be drawn', 'error');
 
     let t;
     if (this.editing) t = S.tickets.find(x => x.id === this.editing);
-    else { t = { id: uid(), used: false, created: Date.now() }; S.tickets.push(t); }
+    else { t = { id: uid(), usedIn: {}, created: Date.now() }; S.tickets.push(t); }
     Object.assign(t, f);
     try { await DB.put('tickets', t); }
     catch (e) { return toast('Could not save: ' + e.message, 'error'); }
@@ -333,7 +357,8 @@ const TicketsUI = {
     byId('tAlign').value = t.align || 'center';
     byId('tFg').value = t.fg || '#ffffff';
     byId('tBg').value = t.bg || '#140f33';
-    this.renderStageOptions(t.stageId || '');
+    this.formStages = (t.stages || []).slice();
+    this.renderStageOptions(false);
     byId('tFormTitle').textContent = `Edit ticket #${t.num}`;
     byId('tSave').textContent = 'Save changes';
     byId('tCancel').hidden = false;
@@ -343,7 +368,15 @@ const TicketsUI = {
 
   async toggle(id) {
     const t = S.tickets.find(x => x.id === id);
-    t.used = !t.used;
+    setUsed(t, !isUsed(t));
+    await DB.put('tickets', t);
+    this.render(); Admin.header();
+  },
+
+  /** Tick or untick one ticket for one stage (the numbered buttons on each card). */
+  async stage(id, btn) {
+    const t = S.tickets.find(x => x.id === id), sid = btn.dataset.sid;
+    t.stages = inStage(t, sid) ? t.stages.filter(x => x !== sid) : [...(t.stages || []), sid];
     await DB.put('tickets', t);
     this.render(); Admin.header();
   },
@@ -369,7 +402,7 @@ const TicketsUI = {
       try {
         const t = {
           id: uid(), num: n++, title: '', type: 'image', text: '', size: 'l', align: 'center',
-          fg: '#ffffff', bg: '#140f33', image: await fileToDataURL(f, 2000, 0.9), used: false, created: Date.now(), stageId: byId('tStage').value,
+          fg: '#ffffff', bg: '#140f33', image: await fileToDataURL(f, 2000, 0.9), usedIn: {}, created: Date.now(), stages: this.checkedStages(),
         };
         await DB.put('tickets', t);
         S.tickets.push(t);
@@ -382,37 +415,51 @@ const TicketsUI = {
     toast(`Added ${added} ticket${added === 1 ? '' : 's'}`);
   },
 
-  /** Fill the "Used in" select, keeping the current choice. */
-  renderStageOptions(sel = byId('tStage').value) {
-    byId('tStage').innerHTML = '<option value="">All stages</option>' + S.event.stages.map((s, i) =>
-      `<option value="${s.id}">Only stage ${i + 1}: ${esc(s.name)}</option>`).join('');
-    byId('tStage').value = S.event.stages.some(s => s.id === sel) ? sel : '';
-    if (S.tickets.length) this.render();
+  checkedStages() { return $$('#tStages input:checked').map(x => x.value); },
+
+  /** Stage tick boxes in the form and the stage picker above the list (both follow the structure). */
+  renderStageOptions(readForm = true) {
+    if (readForm && byId('tStages').children.length) this.formStages = this.checkedStages();
+    byId('tStages').innerHTML = S.event.stages.map((s, i) => `
+      <label class="check"><input type="checkbox" value="${s.id}" ${this.formStages.includes(s.id) ? 'checked' : ''}> ${i + 1}. ${esc(s.icon)} ${esc(s.name)}</label>`).join('');
+    byId('tStageSel').innerHTML = S.event.stages.map((s, i) =>
+      `<option value="${s.id}"${s.id === curStage().id ? ' selected' : ''}>${i + 1}. ${esc(s.name)}</option>`).join('');
+    this.render();
   },
 
   render() {
-    const unused = S.tickets.filter(t => !t.used).length;
-    byId('tCount').textContent = `(${S.tickets.length} total · ${unused} unused)`;
+    const st = curStage(), deck = stageDeck(st), unused = deck.filter(t => !isUsed(t)).length;
+    byId('tCount').textContent = `(${S.tickets.length} total · ${deck.length} in ${st.name} · ${unused} unused there)`;
     const grid = byId('tGrid');
     if (!S.tickets.length) {
       grid.innerHTML = '<div class="empty-state">No tickets yet. Create the first problem above.</div>';
       return;
     }
-    grid.innerHTML = S.tickets.map(t => `
-      <div class="card t-card ${t.used ? 'is-done' : ''}" data-id="${t.id}">
+    const stages = S.event.stages;
+    grid.innerHTML = S.tickets.map(t => {
+      const here = inStage(t, st.id), used = here && isUsed(t);
+      return `
+      <div class="card t-card ${used ? 'is-done' : ''} ${here ? '' : 'not-here'}" data-id="${t.id}">
         <div class="t-thumb" data-act="view">${ticketHTML(t)}</div>
         <div class="t-meta">
           <b>#${t.num}</b>
           <span class="t-label">${esc(t.title || (t.type === 'text' ? (t.text || '').slice(0, 40) : 'Image'))}</span>
-          <span class="badge ${t.used ? 'done' : 'wait'}">${t.used ? 'Used' : 'In deck'}</span>
-          ${t.stageId ? `<span class="badge bi" title="Only drawn in this stage">${esc(S.event.stages.find(s => s.id === t.stageId)?.name || 'Deleted stage')}</span>` : ''}
+          ${here ? `<span class="badge ${used ? 'done' : 'wait'}">${used ? 'Used' : 'In deck'}</span>` : '<span class="badge done">Not in this stage</span>'}
+        </div>
+        <div class="t-stagepills" title="Click a number to tick or untick this ticket for that stage">
+          <span class="muted small">Stages</span>
+          ${stages.map((s, i) => {
+            const on = inStage(t, s.id);
+            return `<button data-act="stage" data-sid="${s.id}" class="sp ${on ? 'on' : ''} ${s.id === st.id ? 'cur' : ''}" title="${on ? 'Untick' : 'Tick'} for stage ${i + 1}: ${esc(s.name)}">${on ? '✓' : ''}${i + 1}</button>`;
+          }).join('')}
         </div>
         <div class="card-actions">
           <button data-act="edit" title="Edit">✎</button>
-          <button data-act="toggle" title="${t.used ? 'Put back in deck' : 'Mark as used'}">${t.used ? '↺' : '✓'}</button>
+          ${here ? `<button data-act="toggle" title="${used ? 'Put back in deck' : 'Mark as used'} in ${esc(st.name)}">${used ? '↺' : '✓'}</button>` : ''}
           <button data-act="del" title="Delete" class="del">🗑</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   },
 };
 
@@ -636,6 +683,15 @@ const Admin = {
     if (!event) await saveEvent();
     S.activeStage = (await DB.get('activeStage')) || '';
     if (!S.event.stages.some(s => s.id === S.activeStage)) S.activeStage = S.event.stages[0].id;
+    // tickets from before per-stage ticks: "all stages" → every stage ticked; "used" → used in the active stage
+    const allStages = S.event.stages.map(s => s.id);
+    const oldTickets = S.tickets.filter(t => !Array.isArray(t.stages) || !t.usedIn);
+    oldTickets.forEach(t => {
+      if (!Array.isArray(t.stages)) t.stages = t.stageId ? [t.stageId] : allStages.slice();
+      if (!t.usedIn) t.usedIn = t.used ? { [S.activeStage]: true } : {};
+      delete t.stageId; delete t.used;
+    });
+    if (oldTickets.length) await DB.putMany('tickets', oldTickets);
     // contesters from before stages existed: "presented" counts for the first stage
     const old = S.contesters.filter(c => !c.done);
     old.forEach(c => { c.done = c.status === 'done' ? { [S.event.stages[0].id]: true } : {}; delete c.status; });
@@ -675,12 +731,12 @@ const Admin = {
     byId('brandTitle').textContent = e.title || 'Contest Manager';
     byId('brandSub').textContent = e.subtitle || 'Contest manager';
     document.title = (e.title || 'Contest') + ' · Contest Manager';
-    const w = waiting().length, unused = S.tickets.filter(t => !t.used).length;
+    const w = waiting().length, deck = stageDeck(curStage()), unused = deck.filter(t => !isUsed(t)).length;
     byId('topStats').innerHTML = `
       <button class="stat stat-fmt" data-goto="structure" title="Change the contest structure">🗂 <b>${e.stages.length}</b> stage${e.stages.length === 1 ? '' : 's'}</button>
       <span class="stat"><b>${S.contesters.length}</b> contesters</span>
       <span class="stat"><b>${w}</b> waiting in ${esc(curStage().name)}</span>
-      <span class="stat"><b>${S.tickets.length}</b> tickets (${unused} unused)</span>
+      <span class="stat"><b>${deck.length}</b> tickets in this stage (${unused} unused)</span>
       <span class="stat"><b>${S.history.length}</b> rounds</span>`;
   },
 
@@ -696,7 +752,7 @@ const Admin = {
   async resetStatuses({ allStages = false, clearHistory = false } = {}) {
     S.contesters.forEach(c => { if (allStages) c.done = {}; else setDone(c, false); });
     const deck = allStages ? S.tickets : stageDeck(curStage());
-    deck.forEach(t => { t.used = false; });
+    deck.forEach(t => { if (allStages) t.usedIn = {}; else setUsed(t, false); });
     await DB.putMany('contesters', S.contesters);
     await DB.putMany('tickets', S.tickets);
     if (clearHistory) { S.history = []; await DB.set('history', S.history); }

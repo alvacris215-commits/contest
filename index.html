@@ -163,7 +163,10 @@
             <input type="file" id="tBulk" accept="image/*" multiple hidden>
           </div>
           <div class="t-preview-wrap">
-            <label>Used in<select id="tStage"></select></label>
+            <div class="t-stages">
+              <span class="muted small">Stages that can draw this ticket</span>
+              <div class="t-stage-checks" id="tStages"></div>
+            </div>
             <div class="muted small">Live preview</div>
             <div class="t-preview" id="tPreview"></div>
           </div>
@@ -173,6 +176,9 @@
       <div class="list-head">
         <h2>Tickets <span class="muted" id="tCount"></span></h2>
         <div class="btn-row">
+          <label class="inline">Stage<select id="tStageSel"></select></label>
+          <button class="btn btn-sm" id="tCheckAll">☑ Tick all for this stage</button>
+          <button class="btn btn-sm" id="tUncheckAll">☐ Untick all</button>
           <button class="btn btn-sm" id="tResetUsed">↺ Mark all as unused</button>
         </div>
       </div>
