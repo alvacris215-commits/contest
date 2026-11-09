@@ -915,3 +915,9 @@
 @keyframes slotShow { from { opacity: 0; transform: translateY(2vh) scale(.6); } }
 .gd-group.past { opacity: .55; box-shadow: 0 0 0 2px rgba(52, 211, 153, .5); }
 .gd-gname small { font-size: .5em; color: #6ee7b7; letter-spacing: .05em; vertical-align: middle; }
+
+/* the cup above an award (drawn, or the uploaded picture) */
+.wn-medal { font-size: 0; }
+.wn-medal .cup-svg, .wn-medal .cup-img { display: block; height: clamp(56px, 13vh, 170px); width: auto; max-width: 22vw; object-fit: contain; }
+.wf-medal { font-size: 0; }
+.wf-medal .cup-svg, .wf-medal .cup-img { display: block; height: calc(var(--ph) * .5); width: auto; max-width: 100%; object-fit: contain; margin: 0 auto; }

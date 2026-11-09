@@ -288,8 +288,32 @@
       <div class="list-head">
         <h2>Completed rounds <span class="muted" id="hCount"></span></h2>
         <div class="btn-row">
+          <button class="btn btn-sm btn-primary" id="hAdd">＋ Add a round</button>
           <button class="btn btn-sm" id="hExport">⬇ Export CSV</button>
           <button class="btn btn-sm btn-danger" id="hClear">Clear history</button>
+        </div>
+      </div>
+      <div class="panel h-form" id="hForm" hidden>
+        <h2 id="hFormTitle">Add a round</h2>
+        <p class="hint">Enter a round by hand, for example one that was not run on the stage screen. It counts like any other round: rankings, qualification and the winners' scores.</p>
+        <div class="h-form-grid">
+          <label>Stage<select id="hStage"></select></label>
+          <label>Round number<input type="number" id="hNum" min="1"></label>
+          <label class="check"><input type="checkbox" id="hMark" checked> Mark these people as presented (and the tickets as used) in this stage</label>
+        </div>
+        <div class="h-people" id="hPeople"></div>
+        <div class="h-pick">
+          <select id="hAddPerson"></select>
+        </div>
+        <div class="h-tk">
+          <span class="muted small">Tickets (optional)</span>
+          <div class="a-chips" id="hTickets"></div>
+          <select id="hAddTicket"></select>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="hSave">Add round</button>
+          <button class="btn" id="hCancel">Cancel</button>
+          <span class="muted small" id="hNote"></span>
         </div>
       </div>
       <div class="panel table-panel">
@@ -311,6 +335,18 @@
           <label>Last slide, with all the winners<input type="text" data-w="closing" placeholder="Congratulations!"></label>
           <label class="check"><input type="checkbox" data-w="revealUp"> Reveal from the bottom of the list up, so the first award comes last</label>
           <label class="check"><input type="checkbox" data-w="showScores"> Show each winner's score in every stage</label>
+        </div>
+        <div class="w-cup">
+          <div class="cup-prev" id="wCupPrev"></div>
+          <div>
+            <b>Cup picture</b>
+            <p class="hint">Shown above each award on the audience screen. Without a picture, a cup is drawn in the award's medal colour (gold, silver, bronze or special). A PNG with a transparent background looks best. Each award can also have its own picture.</p>
+            <div class="btn-row">
+              <button class="btn btn-sm" id="wCupBtn">Choose a picture</button>
+              <button class="btn btn-sm" id="wCupNo" hidden>Use the drawn cups</button>
+            </div>
+            <input type="file" id="wCupFile" accept="image/*" hidden>
+          </div>
         </div>
         <div class="btn-row w-go">
           <button class="btn btn-gold btn-lg" id="wShow">✦ Show the winners</button>

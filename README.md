@@ -72,7 +72,7 @@ After a round's timers, the audience screen shows the first person's photo and n
 
 When everyone in a stage has presented (or you click **End this stage**), the audience sees the **ranking**: places 4 and below appear from the bottom up, then the podium for 3rd, 2nd and 1st. The next key shows the "stage complete" screen.
 
-Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. Delete one round with its 🗑 button: its scores leave the rankings, and you can choose to mark its people as waiting again so they present again. In one-screen mode, press a key on the waiting screen to open a small score form.
+Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. **＋ Add a round** enters a round by hand (stage, round number, people, each judge's score, tickets), and ✎ edits any round the same way; such rounds count like the others and are marked "by hand". Delete one round with its 🗑 button: its scores leave the rankings, and you can choose to mark its people as waiting again so they present again. In one-screen mode, press a key on the waiting screen to open a small score form.
 
 ### Qualifying and random groups
 
@@ -103,6 +103,7 @@ In **👑 Winners**, add the awards:
 - **Personal award:** pick the winner.
 - **Group award:** add the members, or use a team from a round, and optionally give the group a name.
 - Each award has a title, a medal (gold, silver, bronze or special) and an optional line shown under the name.
+- **Cup picture:** above each award the audience sees a trophy cup drawn in the award's medal colour. Click **Choose a picture** to use your own cup for every award (a PNG with a transparent background looks best), or **Own picture for this award** on an award to give it a different one.
 - **Fill 1st–3rd from the scores** creates the top three from the overall averages. The overall average is the mean of a person's stage averages; the table at the bottom shows everyone's.
 
 Click **Show the winners**. The console and the audience screen open (or are reused), and the ceremony starts:

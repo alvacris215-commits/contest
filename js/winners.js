@@ -6,11 +6,57 @@
    ===================================================================== */
 
 const MEDALS = {
-  gold: { icon: '🥇', label: 'Gold' },
-  silver: { icon: '🥈', label: 'Silver' },
-  bronze: { icon: '🥉', label: 'Bronze' },
-  special: { icon: '🌟', label: 'Special award' },
+  gold: { icon: '🥇', label: 'Gold', colors: ['#fff6c8', '#f5c451', '#a8650f'] },
+  silver: { icon: '🥈', label: 'Silver', colors: ['#ffffff', '#d5dce6', '#66768c'] },
+  bronze: { icon: '🥉', label: 'Bronze', colors: ['#ffe0c4', '#e2914f', '#7c4119'] },
+  special: { icon: '🌟', label: 'Special award', colors: ['#f6efff', '#c4b5fd', '#5b21b6'] },
 };
+
+/** Points of a star as an SVG path. */
+function starPath(cx, cy, R, r, n = 5) {
+  let d = '';
+  for (let i = 0; i < n * 2; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / n, rad = i % 2 ? r : R;
+    d += `${i ? 'L' : 'M'}${(cx + Math.cos(a) * rad).toFixed(2)} ${(cy + Math.sin(a) * rad).toFixed(2)}`;
+  }
+  return d + 'Z';
+}
+
+/** A trophy cup drawn in the medal's colours (polished metal, a star, sparkles). */
+let cupSeq = 0;
+function trophySVG(medal = 'gold') {
+  const [hi, mid, lo] = (MEDALS[medal] || MEDALS.gold).colors;
+  const id = 'cup' + (++cupSeq);
+  return `<svg class="cup-svg" viewBox="0 0 120 146" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="${id}m" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0" stop-color="${lo}"/><stop offset=".26" stop-color="${mid}"/><stop offset=".44" stop-color="${hi}"/>
+        <stop offset=".6" stop-color="${mid}"/><stop offset="1" stop-color="${lo}"/>
+      </linearGradient>
+      <linearGradient id="${id}v" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/></linearGradient>
+    </defs>
+    <path d="M27 30C8 30 6 62 33 68" fill="none" stroke="url(#${id}v)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M93 30C112 30 114 62 87 68" fill="none" stroke="url(#${id}v)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M24 20H96V44C96 72 80 88 60 90C40 88 24 72 24 44Z" fill="url(#${id}m)" stroke="${lo}" stroke-width="1.5"/>
+    <ellipse cx="60" cy="20" rx="36" ry="6" fill="${hi}" stroke="${lo}" stroke-width="1.5"/>
+    <ellipse cx="60" cy="20.6" rx="30" ry="3.4" fill="${lo}" opacity=".45"/>
+    <path d="M33 29C32 52 37 70 49 80" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="5" stroke-linecap="round"/>
+    <path d="${starPath(60, 50, 13, 5.6)}" fill="${hi}" stroke="${lo}" stroke-width="1.2"/>
+    <path d="M54 90H66L64 103H56Z" fill="url(#${id}m)"/>
+    <ellipse cx="60" cy="104" rx="11" ry="3.5" fill="url(#${id}m)" stroke="${lo}" stroke-width="1"/>
+    <path d="M42 107H78L84 121H36Z" fill="url(#${id}m)" stroke="${lo}" stroke-width="1.2"/>
+    <rect x="28" y="121" width="64" height="18" rx="3" fill="url(#${id}v)" stroke="${lo}" stroke-width="1.2"/>
+    <rect x="42" y="125.5" width="36" height="9" rx="2" fill="${hi}" opacity=".85"/>
+    <path d="${starPath(99, 12, 7, 1.6, 4)}" fill="#fff"/>
+    <path d="${starPath(18, 86, 4.5, 1.1, 4)}" fill="#fff" opacity=".8"/>
+  </svg>`;
+}
+
+/** The cup shown for an award: its own picture, the ceremony's picture, or the drawn cup. */
+function cupHTML(a) {
+  const src = a.image || S.winners.cup;
+  return src ? `<img class="cup-img" src="${esc(src)}" alt="">` : trophySVG(a.medal);
+}
 
 const WINNERS_DEFAULTS = {
   title: 'The Winners',
@@ -29,6 +75,7 @@ function normalizeAward(a = {}) {
     team: String(a.team ?? ''),
     members: (Array.isArray(a.members) ? a.members : []).map(String),
     note: String(a.note ?? ''),
+    image: String(a.image ?? ''),
   };
 }
 
@@ -39,6 +86,7 @@ function normalizeWinners(w) {
     closing: String(w.closing ?? WINNERS_DEFAULTS.closing),
     revealUp: w.revealUp !== undefined ? !!w.revealUp : WINNERS_DEFAULTS.revealUp,
     showScores: w.showScores !== undefined ? !!w.showScores : WINNERS_DEFAULTS.showScores,
+    cup: String(w.cup ?? ''),
     awards: (Array.isArray(w.awards) ? w.awards : []).map(normalizeAward),
   };
 }
@@ -106,6 +154,21 @@ const WinnersUI = {
     byId('wAddGroup').onclick = () => this.add('group');
     byId('wSuggest').onclick = () => this.suggest();
     byId('wShow').onclick = () => this.show(false);
+    byId('wCupBtn').onclick = () => byId('wCupFile').click();
+    byId('wCupFile').onchange = async e => {
+      const f = e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      try { S.winners.cup = await fileToDataURL(f, 900, 0.92); } catch (err) { return toast(err.message, 'error'); }
+      await saveWinners();
+      this.render();
+      toast('Cup picture set for every award');
+    };
+    byId('wCupNo').onclick = async () => {
+      S.winners.cup = '';
+      await saveWinners();
+      this.render();
+    };
     byId('wShowHere').onclick = () => this.show(true);
 
     const list = byId('wList');
@@ -133,6 +196,13 @@ const WinnersUI = {
       persist();
       this.render();
     });
+    list.addEventListener('change', async e => {
+      if (!e.target.matches('[data-cupfile]') || !e.target.files[0]) return;
+      const a = this.award(e.target), f = e.target.files[0];
+      try { a.image = await fileToDataURL(f, 900, 0.92); } catch (err) { return toast(err.message, 'error'); }
+      await saveWinners();
+      this.render();
+    });
     list.addEventListener('click', e => {
       const b = e.target.closest('[data-act]');
       if (!b) return;
@@ -143,6 +213,8 @@ const WinnersUI = {
         if (!confirm(`Delete the award "${a.title}"?`)) return;
         arr.splice(i, 1);
       } else if (b.dataset.act === 'rm') a.members = a.members.filter(id => id !== b.dataset.cid);
+      else if (b.dataset.act === 'img') return b.closest('[data-aid]').querySelector('[data-cupfile]').click();
+      else if (b.dataset.act === 'noimg') a.image = '';
       else return;
       persist();
       this.render();
@@ -209,6 +281,10 @@ const WinnersUI = {
   render() {
     const W = S.winners;
     byId('wCount').textContent = `(${W.awards.length})`;
+    byId('wCupPrev').innerHTML = W.cup ? `<img class="cup-img" src="${esc(W.cup)}" alt="">` : Object.keys(MEDALS).map(trophySVG).join('');
+    byId('wCupPrev').classList.toggle('own', !!W.cup);
+    byId('wCupNo').hidden = !W.cup;
+    byId('wCupBtn').textContent = W.cup ? 'Change the picture' : 'Choose a picture';
     const ranked = overallRanking();
     const overall = new Map(ranked.map(x => [x.c.id, x.rec.overall]));
     const opt = (c, sel) => `<option value="${c.id}"${sel ? ' selected' : ''}>#${c.num} ${esc(c.name)}${overall.has(c.id) ? ` — ${fmtAvg(overall.get(c.id))}` : ''}</option>`;
@@ -243,6 +319,17 @@ const WinnersUI = {
           ${a.kind === 'group' ? `<label class="a-wide">Group name (optional)<input type="text" data-f="team" value="${esc(a.team)}" placeholder="e.g. Team Phoenix. Empty: the members' names"></label>` : ''}
           <div class="a-wide">${who}</div>
           <label class="a-wide">A line under the name (optional)<input type="text" data-f="note" value="${esc(a.note)}" placeholder="e.g. For the most vivid picture description"></label>
+          <div class="a-wide a-cup">
+            <div class="cup-prev">${cupHTML(a)}</div>
+            <div>
+              <span class="muted small">${a.image ? 'This award has its own cup picture' : S.winners.cup ? 'Uses the cup picture set above' : `Uses the drawn ${MEDALS[a.medal].label.toLowerCase()} cup`}</span>
+              <div class="btn-row">
+                <button class="btn btn-sm" data-act="img">${a.image ? 'Change its picture' : 'Own picture for this award'}</button>
+                ${a.image ? '<button class="btn btn-sm" data-act="noimg">Remove</button>' : ''}
+              </div>
+            </div>
+            <input type="file" accept="image/*" data-cupfile hidden>
+          </div>
           <div class="a-wide a-scores">${this.scoresHTML(ppl)}</div>
         </div>
       </div>`;

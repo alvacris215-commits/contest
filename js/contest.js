@@ -1675,7 +1675,6 @@ const Contest = (() => {
   }
 
   /* ---------------- winners ceremony ---------------- */
-  const medalOf = a => MEDALS[a.medal] || MEDALS.gold;
 
   function winners() {
     st.stageIdx = -1;
@@ -1732,7 +1731,7 @@ const Contest = (() => {
     scr.dataset.medal = a.medal;
     scr.classList.remove('rolling', 'revealed', 'scored');
     byId('wnCount').textContent = `Award ${i + 1} of ${W.list.length}`;
-    byId('wnMedal').textContent = medalOf(a).icon;
+    byId('wnMedal').innerHTML = cupHTML(a);
     byId('wnTitle').innerHTML = words(a.title || 'Award');
     const pp = byId('wnPeople');
     pp.className = `wn-people n${Math.min(ppl.length, 6)}${group ? ' group' : ''}`;
@@ -1859,7 +1858,7 @@ const Contest = (() => {
     grid.innerHTML = list.map((a, k) => {
       const ppl = awardPeople(a), stages = a.kind === 'person' && ppl[0] ? personRecord(ppl[0].id).stages : [];
       return `<div class="wf-card" data-medal="${a.medal}" style="--k:${k}">
-        <div class="wf-medal">${medalOf(a).icon}</div>
+        <div class="wf-medal">${cupHTML(a)}</div>
         <div class="wf-award">${esc(a.title)}</div>
         <div class="wf-photos n${Math.min(ppl.length, 6)}">${ppl.map(c => `<img src="${esc(avatarFor(c))}" alt="">`).join('')}</div>
         <div class="wf-name">${esc(awardName(a))}</div>

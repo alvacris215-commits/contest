@@ -20,11 +20,13 @@ const Audience = {
       } else if (m.type === 'hello') {
         Link.send('status', { status: Contest.status() });
       } else if (m.type === 'history') {
-        // a round was deleted in the dashboard: keep the same objects for the rounds that remain
+        // a round was added, edited or deleted in the dashboard: keep the same objects for the rounds that remain
         const fresh = (await DB.get('history')) || [];
-        S.history = fresh.map(h => S.history.find(x => x.id === h.id) || h);
+        S.history = fresh.map(h => { const o = S.history.find(x => x.id === h.id); return o ? Object.assign(o, h) : h; });
         const cs = await DB.all('contesters');
         S.contesters.forEach(c => { const f = cs.find(x => x.id === c.id); if (f) c.done = f.done; });
+        const ts = await DB.all('tickets');
+        S.tickets.forEach(t => { const f = ts.find(x => x.id === t.id); if (f) t.usedIn = f.usedIn; });
       }
     });
     Contest.open({ remote: true, start: 'standby' });

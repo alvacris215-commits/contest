@@ -502,7 +502,12 @@ const ResultsUI = {
       this.render();
       Admin.header();
     };
-    byId('hBody').addEventListener('click', e => { const b = e.target.closest('[data-del]'); if (b) this.del(b.dataset.del); });
+    byId('hBody').addEventListener('click', e => {
+      const d = e.target.closest('[data-del]'), ed = e.target.closest('[data-edit]');
+      if (d) this.del(d.dataset.del);
+      if (ed) this.openForm(ed.dataset.edit);
+    });
+    this.initForm();
     byId('hExport').onclick = () => {
       const people = Math.max(1, ...S.history.map(h => histTeam(h).length));
       const judges = Math.max(0, ...S.history.flatMap(h => histTeam(h).map(c => (c.scores || []).length)));
@@ -543,12 +548,142 @@ const ResultsUI = {
         <td><b>${h.round}</b></td>
         <td>${team || '<span class="muted">—</span>'}</td>
         <td>${tickets || '<span class="muted">—</span>'}</td>
-        <td class="muted">${esc(h.stage || h.format || '')}</td>
+        <td class="muted">${esc(h.stage || h.format || '')}${h.manual ? ' <span class="badge chg" title="Entered by hand">✎ by hand</span>' : h.edited ? ' <span class="badge chg" title="Changed by hand after the round">✎ edited</span>' : ''}</td>
         <td class="muted">${new Date(h.at).toLocaleString()}</td>
-        <td><button class="btn btn-sm h-del" data-del="${h.id}" title="Delete this round">🗑</button></td>
+        <td class="h-acts"><button class="btn btn-sm" data-edit="${h.id}" title="Edit this round">✎</button><button class="btn btn-sm h-del" data-del="${h.id}" title="Delete this round">🗑</button></td>
       </tr>`;
     }).join('') || '<tr><td colspan="6" class="muted center">No rounds yet</td></tr>';
     this.renderRanking();
+  },
+
+  /* ---------- add or edit a round by hand ---------- */
+  initForm() {
+    this.f = null;
+    byId('hAdd').onclick = () => this.openForm();
+    byId('hCancel').onclick = () => this.closeForm();
+    byId('hSave').onclick = () => this.saveForm();
+    byId('hStage').onchange = e => { this.f.stageId = e.target.value; this.f.tickets = []; this.renderForm(); };
+    byId('hAddPerson').onchange = e => {
+      if (e.target.value) this.f.people.push({ id: e.target.value, scores: S.event.judges.map(() => '') });
+      this.renderForm();
+    };
+    byId('hAddTicket').onchange = e => {
+      if (e.target.value) this.f.tickets.push(e.target.value);
+      this.renderForm();
+    };
+    byId('hPeople').addEventListener('input', e => {
+      const row = e.target.closest('[data-p]');
+      if (!row || e.target.dataset.j === undefined) return;
+      this.f.people[+row.dataset.p].scores[+e.target.dataset.j] = e.target.value;
+      row.querySelector('.h-avg').innerHTML = this.avgHTML(this.f.people[+row.dataset.p]);
+    });
+    byId('hPeople').addEventListener('click', e => {
+      const b = e.target.closest('[data-rm]');
+      if (!b) return;
+      this.f.people.splice(+b.dataset.rm, 1);
+      this.renderForm();
+    });
+    byId('hTickets').addEventListener('click', e => {
+      const b = e.target.closest('[data-rmt]');
+      if (!b) return;
+      this.f.tickets = this.f.tickets.filter(id => id !== b.dataset.rmt);
+      this.renderForm();
+    });
+  },
+
+  nextNum() { return S.history.reduce((m, h) => Math.max(m, +h.round || 0), 0) + 1; },
+  maxScore(stageId) { const f = stageFormat(S.event.stages.find(s => s.id === stageId)); return f ? f.scoreMax : 10; },
+
+  /** Open the form empty (add) or filled from a round (edit). */
+  openForm(id = null) {
+    const h = id && S.history.find(x => x.id === id);
+    const judges = S.event.judges;
+    this.f = h ? {
+      editing: h.id, stageId: h.stageId || curStage().id, num: h.round,
+      people: histTeam(h).filter(c => S.contesters.some(x => x.id === c.id)).map(c => ({ id: c.id, scores: judges.map((_, k) => (c.scores && c.scores[k] != null ? String(c.scores[k]) : '')) })),
+      tickets: histTickets(h).map(t => S.tickets.find(x => x.num === t.num)).filter(Boolean).map(t => t.id),
+    } : { editing: null, stageId: curStage().id, num: this.nextNum(), people: [], tickets: [] };
+    byId('hFormTitle').textContent = h ? `Edit round ${h.round}` : 'Add a round';
+    byId('hSave').textContent = h ? 'Save changes' : 'Add round';
+    byId('hMark').checked = true;
+    byId('hNum').value = this.f.num;
+    byId('hForm').hidden = false;
+    this.renderForm();
+    byId('hForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  closeForm() { this.f = null; byId('hForm').hidden = true; },
+
+  avgHTML(p) {
+    const vals = p.scores.map(v => String(v).trim());
+    if (!vals.length || vals.every(v => v === '')) return '<span class="muted">no score</span>';
+    if (vals.some(v => v === '' || isNaN(+v))) return '<span class="muted">…</span>';
+    return `Average <b>${(vals.reduce((a, b) => a + +b, 0) / vals.length).toFixed(2)}</b>`;
+  },
+
+  renderForm() {
+    const f = this.f, judges = S.event.judges, max = this.maxScore(f.stageId);
+    byId('hStage').innerHTML = S.event.stages.map((s, i) => `<option value="${s.id}"${s.id === f.stageId ? ' selected' : ''}>${i + 1}. ${esc(s.icon)} ${esc(s.name)}</option>`).join('');
+    byId('hPeople').innerHTML = f.people.map((p, i) => {
+      const c = S.contesters.find(x => x.id === p.id);
+      return `<div class="h-row" data-p="${i}">
+        <span class="a-mem"><img src="${esc(avatarFor(c))}" alt="">#${c.num} ${esc(c.name)}</span>
+        <div class="h-scores">${judges.map((j, k) => `<label>${esc(j || `Judge ${k + 1}`)}<input type="number" min="0" max="${max}" step="any" data-j="${k}" value="${esc(p.scores[k] ?? '')}" placeholder="0 – ${max}"></label>`).join('') || '<span class="muted small">No judges: add them in the Structure tab to enter scores</span>'}</div>
+        <span class="h-avg">${this.avgHTML(p)}</span>
+        <button class="btn btn-sm" data-rm="${i}" title="Remove">✕</button>
+      </div>`;
+    }).join('') || '<div class="muted small">Nobody yet. Add the people of this round below.</div>';
+    const taken = new Set(f.people.map(p => p.id));
+    byId('hAddPerson').innerHTML = '<option value="">＋ Add a person…</option>' + S.contesters.filter(c => !taken.has(c.id)).map(c => `<option value="${c.id}">#${c.num} ${esc(c.name)}</option>`).join('');
+    const stage = S.event.stages.find(s => s.id === f.stageId), deck = stageDeck(stage);
+    byId('hTickets').innerHTML = f.tickets.map(id => S.tickets.find(t => t.id === id)).filter(Boolean)
+      .map(t => `<span class="a-mem">#${t.num}${t.title ? ' ' + esc(t.title) : ''}<button data-rmt="${t.id}" title="Remove">✕</button></span>`).join('');
+    byId('hAddTicket').innerHTML = '<option value="">＋ Add a ticket…</option>' + (deck.length ? deck : S.tickets).filter(t => !f.tickets.includes(t.id))
+      .map(t => `<option value="${t.id}">#${t.num}${t.title ? ' ' + esc(t.title) : ''}</option>`).join('');
+    byId('hNote').textContent = judges.length ? `Scores from 0 to ${max}. Leave a person's boxes empty for no score.` : '';
+  },
+
+  async saveForm() {
+    const f = this.f, judges = S.event.judges, max = this.maxScore(f.stageId);
+    const num = parseInt(byId('hNum').value, 10);
+    if (!(num > 0)) return toast('Round number must be positive', 'error');
+    if (S.history.some(h => +h.round === num && h.id !== f.editing)) return toast(`Round ${num} already exists`, 'error');
+    if (!f.people.length) return toast('Add at least one person', 'error');
+    const team = [];
+    for (const p of f.people) {
+      const c = S.contesters.find(x => x.id === p.id);
+      const vals = p.scores.map(v => String(v).trim());
+      const entry = { id: c.id, num: c.num, name: c.name };
+      if (judges.length && vals.some(v => v !== '')) {
+        if (vals.some(v => v === '' || isNaN(+v) || +v < 0 || +v > max)) return toast(`${c.name}: enter a score from 0 to ${max} for every judge, or leave all empty`, 'error');
+        entry.scores = vals.map(Number);
+        entry.avg = entry.scores.reduce((a, b) => a + b, 0) / entry.scores.length;
+      }
+      team.push(entry);
+    }
+    const stage = S.event.stages.find(s => s.id === f.stageId);
+    const tickets = f.tickets.map(id => S.tickets.find(t => t.id === id)).filter(Boolean);
+    const old = f.editing && S.history.find(h => h.id === f.editing);
+    const h = {
+      ...(old || {}), id: f.editing || uid(), round: num, at: old ? old.at : Date.now(),
+      format: stageFormatName(stage), stage: stage.name, stageId: stage.id,
+      team, tickets: tickets.map(t => ({ num: t.num, title: t.title || '' })),
+      manual: old ? !!old.manual : true, edited: old ? !old.manual : false,
+    };
+    if (old) S.history[S.history.indexOf(old)] = h; else S.history.push(h);
+    S.history.sort((a, b) => (+a.round || 0) - (+b.round || 0));
+    await DB.set('history', S.history);
+    if (byId('hMark').checked) {
+      const people = team.map(t => S.contesters.find(c => c.id === t.id));
+      people.forEach(c => setDone(c, true, stage.id));
+      tickets.forEach(t => setUsed(t, true, stage.id));
+      await DB.putMany('contesters', people);
+      if (tickets.length) await DB.putMany('tickets', tickets);
+    }
+    if (typeof Console !== 'undefined' && Console.connected()) Link.send('history');
+    toast(old ? `Round ${num} saved` : `Round ${num} added`);
+    this.closeForm();
+    Admin.refreshAll();
   },
 
   /** Delete one round record (its people and scores). Optionally let its people present again. */
