@@ -90,7 +90,8 @@ Tick **Draw random groups at the start of this stage** to put the stage's people
 When the stage itself starts, after its title:
 
 1. If the qualifiers were not announced yet (for example when you start the Final directly), they are shown first.
-2. **Group draw:** each click spins over the remaining people, stops on one, and flies them into the next group (Group A, B, C… in turn). **Draw all the rest** in the console finishes it quickly.
+2. **Group draw:** one click draws everyone. One by one, the highlight spins over the remaining people, stops on one, and flies them into the next group (Group A, B, C… in turn). **Draw the rest quickly** in the console speeds it up.
+   If the groups were already drawn (for example when you restart the stage), they are not drawn again: **The groups** screen shows them, with a ✓ on groups that already presented, and the next click starts the next group.
 3. **The rounds go group by group:** each round's team is the next group, then tickets, timers and scores as the stage's format says.
 
 The groups are saved. In the console, each stage has **Show who qualified** and **Draw the groups (again)**; the Structure card has **Clear the groups**.
@@ -122,5 +123,7 @@ Move the mouse to show the fullscreen, sound and menu buttons.
 
 Notes:
 - People who have presented are marked as "Presented" and are not drawn again.
+- No spinning when there is no choice. When only one person can be drawn, they are revealed straight away. When the people left are exactly a round's team (for example the last 2 in pairs), the round goes straight to "Meet the team". When the deck has only one ticket, it opens by itself.
+- A round of one person skips the "team" screen: after the reveal, the next key draws the topic (or starts the timer).
 - When every ticket has been used, the deck reshuffles. Turn off "Each ticket can be drawn only once" in the format to always use the full deck.
 - In fullscreen, the first `Esc` exits fullscreen (that is the browser's behaviour). Press it again for the menu.

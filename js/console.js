@@ -372,7 +372,7 @@ const Console = {
     else if (mode === 'timer') nextLabel = 'Timer running';
     else if (mode === 'scoreWait') nextLabel = 'Enter the scores above';
     else if (mode === 'scoring') nextLabel = 'Showing the scores…';
-    else if (mode === 'groupDraw') nextLabel = '🎲 Draw the next member';
+    else if (mode === 'groupDraw') nextLabel = '🎲 Draw the groups';
     else if (mode === 'groupsDone') nextLabel = 'Start the rounds';
     else if (mode === 'wTease') nextLabel = '✦ Reveal the winner';
     else if (mode === 'wShown') nextLabel = win && win.i + 1 >= win.n ? 'Show all the winners' : 'Next award';

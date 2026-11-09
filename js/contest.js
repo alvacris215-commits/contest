@@ -248,7 +248,7 @@ const Contest = (() => {
         if (cur) return stageEnd();                               // shown at the end of the stage before
         return runStage(stageIndex(st.qualFor));
       }
-      case 'groupDraw': return groupDrawNext(false);
+      case 'groupDraw': st.gd.auto = true; return groupDrawNext(false);   // one click draws everyone, one by one
       case 'groupsDone': return newRound();
       case 'roll': return stopRoll();
       case 'revealed': return nextMember();
@@ -546,7 +546,10 @@ const Contest = (() => {
         [{ label: '✕ Back to dashboard', fn: close }], 'final');
     }
     if (s.entry === 'top' && !st.qualShownFor.has(s.id)) return showQualifiers(s);
-    if (s.groups && !stageGroups(s)) return groupDraw();
+    if (s.groups) {
+      const groups = stageGroups(s);
+      return groups ? showGroups(groups) : groupDraw();   // drawn before: just show them
+    }
     newRound();
   }
 
@@ -563,6 +566,13 @@ const Contest = (() => {
     const pool = waiting();
     if (!pool.length) return rankingOrEnd();
     st.round = { num: nextRoundNum(), team: [], tickets: [], tcount: Math.min(F().ticketCount, deck().length), committed: false };
+    // everyone left fits in this round (and nobody can be added from earlier presenters): no draw needed
+    const size = F().teamSize, fillable = F().fillFromDone && stageEntrants(stageNow()).length > pool.length;
+    if (size > 1 && (pool.length === size || (pool.length < size && !fillable))) {
+      st.round.team = pool.slice().sort((a, b) => a.num - b.num);
+      buildSteps();
+      return showTeam();
+    }
     buildSteps();
     startRoll(0, pool);
   }
@@ -591,6 +601,10 @@ const Contest = (() => {
     st.pool = pool;
     st.slot = slot;
     const r = st.round;
+    if (pool.length === 1) {   // only one person can be drawn: no spinning, show them straight away
+      setStep('p' + slot);
+      return stopRoll(pool[0]);
+    }
     byId('rollLabel').textContent = T(F().roundLabel);
     byId('rollTitle').textContent = T(F().slots[slot].title);
     byId('rollNote').textContent = note;
@@ -629,25 +643,27 @@ const Contest = (() => {
     st.mode = 'roll';
   }
 
-  async function stopRoll() {
+  /** Stop the spinner on a random person, or (direct) reveal the only possible person. */
+  async function stopRoll(direct = null) {
     const g = st.gen;
     const slot = st.slot, r = st.round;
     st.busy = true; st.mode = 'stopping';
     byId('rollPrompt').textContent = '';
-    const chosen = pick(st.pool);
-    await st.roller.stop(chosen);
-    if (g !== st.gen) return;
-    st.roller = null;
-    FX.warpTo(0.08);
-    const orb = byId('orb');
-    orb.classList.remove('spinning'); orb.classList.add('locked');
-    Sound.lock();
-    const [ox, oy] = center(orb);
-    FX.shockwave(ox, oy, { max: orb.offsetWidth * 0.9, dur: 0.7, width: 3 });
-    FX.burst(ox, oy, { count: 40, speed: [1, 5], colors: FX.GOLD, gravity: 0 });
-
-    await wait(S.settings.revealDelay);
-    if (g !== st.gen) return;
+    const chosen = direct || pick(st.pool);
+    if (!direct) {
+      await st.roller.stop(chosen);
+      if (g !== st.gen) return;
+      st.roller = null;
+      FX.warpTo(0.08);
+      const orb = byId('orb');
+      orb.classList.remove('spinning'); orb.classList.add('locked');
+      Sound.lock();
+      const [ox, oy] = center(orb);
+      FX.shockwave(ox, oy, { max: orb.offsetWidth * 0.9, dur: 0.7, width: 3 });
+      FX.burst(ox, oy, { count: 40, speed: [1, 5], colors: FX.GOLD, gravity: 0 });
+      await wait(S.settings.revealDelay);
+      if (g !== st.gen) return;
+    } else FX.warpTo(0.08);
     r.team.push(chosen);
     await reveal(chosen, roleOf(slot), g);
     if (g !== st.gen) return;
@@ -659,7 +675,8 @@ const Contest = (() => {
       return showTeam();
     }
     const more = !full && memberPool().list.length > 0;
-    byId('revealPrompt').innerHTML = `<span class="key">⌨</span> ${more ? `Press any key to draw: <b>${esc(roleOf(r.team.length))}</b>` : 'Press any key to continue'}`;
+    byId('revealPrompt').innerHTML = `<span class="key">⌨</span> ${more ? `Press any key to draw: <b>${esc(roleOf(r.team.length))}</b>`
+      : F().teamSize === 1 ? afterTeamText() : 'Press any key to continue'}`;
     st.mode = 'revealed';
     st.busy = false;
   }
@@ -708,6 +725,8 @@ const Contest = (() => {
 
   function nextMember() {
     const r = st.round;
+    // one person per round: the reveal already shows who speaks, so go straight on
+    if (F().teamSize === 1 && r.team.length) return afterTeam();
     if (r.team.length >= F().teamSize) return showTeam();
     const p = memberPool();
     if (!p.list.length) return showTeam();
@@ -746,13 +765,16 @@ const Contest = (() => {
 
     await wait(1300);
     if (g !== st.gen) return;
-    const r = st.round;
-    let next;
-    if (r.tcount > 0) next = r.tcount > 1 ? `Press any key to draw ${esc(tLabel().toLowerCase())} 1 of ${r.tcount}` : `Press any key to draw your ${esc(tLabel().toLowerCase())}`;
-    else next = f.phases.length ? 'Press any key to start the timer' : 'Press any key to finish the round';
-    byId('pairPrompt').innerHTML = `<span class="key">⌨</span> ${next}`;
+    byId('pairPrompt').innerHTML = `<span class="key">⌨</span> ${afterTeamText()}`;
     st.mode = 'teamShown';
     st.busy = false;
+  }
+
+  /** What the next key press does once the team is known. */
+  function afterTeamText() {
+    const r = st.round;
+    if (r.tcount > 0) return r.tcount > 1 ? `Press any key to draw ${esc(tLabel().toLowerCase())} 1 of ${r.tcount}` : `Press any key to draw your ${esc(tLabel().toLowerCase())}`;
+    return F().phases.length ? 'Press any key to start the timer' : 'Press any key to finish the round';
   }
 
   async function afterTeam() {
@@ -794,10 +816,17 @@ const Contest = (() => {
       `<div class="tk" data-id="${t.id}" style="--d:${i}"><div class="tk-in"><span class="tk-star">✦</span><b>${t.num}</b>${cardLabel()}</div></div>`
     ).join('');
     layoutTickets(list.length);
-    byId('tkPrompt').innerHTML = '<span class="key">⌨</span> Press any key to stop';
+    byId('tkPrompt').innerHTML = list.length === 1 ? '' : '<span class="key">⌨</span> Press any key to stop';
     replay('scrTickets'); show('scrTickets');
     FX.warpTo(0.45);
     Sound.whoosh();
+    if (list.length === 1) {   // only one ticket: nothing to draw, it opens by itself
+      st.mode = 'ticketRoll'; st.busy = true;
+      const g = st.gen;
+      await wait(900);
+      if (g !== st.gen) return;
+      return stopTicket();
+    }
 
     let hot = null;
     st.roller = new Roller(list, t => {
@@ -827,7 +856,7 @@ const Contest = (() => {
     st.busy = true; st.mode = 'stopping';
     byId('tkPrompt').textContent = '';
     const t = pick(st.tpool);
-    await st.roller.stop(t);
+    if (st.roller) await st.roller.stop(t);
     if (g !== st.gen) return;
     st.roller = null;
     const card = byId('tkGrid').querySelector(`[data-id="${t.id}"]`);
@@ -1476,7 +1505,10 @@ const Contest = (() => {
     for (let r = 0; r < Math.max(...sizes); r++) sizes.forEach((n, gi) => { if (r < n) seq.push(gi); });
     st.gd = { pool: people, groups: sizes.map(() => []), sizes, seq, k: 0 };
     byId('gdLabel').textContent = `Stage ${st.stageIdx + 1} · ${s.name}`;
+    byId('gdTitle').textContent = 'Group draw';
+    byId('scrGroupDraw').classList.remove('gd-show');
     const pool = byId('gdPool');
+    pool.classList.remove('empty');
     const pp = people.length <= 8 ? 12 : people.length <= 16 ? 9 : people.length <= 30 ? 7 : 5.5;
     pool.style.setProperty('--pp', `${pp}vh`);
     pool.innerHTML = people.map((c, k) => `<div class="gd-p" data-id="${c.id}" style="--k:${k}"><img src="${esc(avatarFor(c))}" alt=""><span>${esc(c.name)}</span></div>`).join('');
@@ -1489,7 +1521,7 @@ const Contest = (() => {
         <div class="gd-gname">${groupName(gi)}</div>
         <div class="gd-slots">${Array.from({ length: n }, () => '<div class="gd-slot"><i>?</i></div>').join('')}</div>
       </div>`).join('');
-    byId('gdPrompt').innerHTML = `<span class="key">⌨</span> Click to draw the first member of ${groupName(0)}`;
+    byId('gdPrompt').innerHTML = '<span class="key">⌨</span> Click to draw the groups';
     replay('scrGroupDraw'); show('scrGroupDraw');
     FX.warpTo(0.2);
     Sound.whoosh();
@@ -1503,10 +1535,12 @@ const Contest = (() => {
     byId('gdPrompt').textContent = '';
     const gi = gd.seq[gd.k];
     const chosen = pick(gd.pool);
+    // about 2.5 s per person, quicker when many people are drawn
+    const sp = gd.seq.length <= 8 ? 1 : gd.seq.length <= 16 ? 0.75 : 0.55;
     const els = () => $$('#gdPool .gd-p:not(.gone)');
     // the highlight runs over the pool, slowing down, and stops on the chosen person
     if (gd.pool.length > 1) {
-      const steps = fast ? 6 : 22;
+      const steps = fast ? 6 : Math.round(16 * sp);
       let el = null;
       for (let i = 0; i < steps; i++) {
         if (g !== st.gen) return;
@@ -1515,7 +1549,7 @@ const Contest = (() => {
         if (el) el.classList.remove('hot');
         el = c; el.classList.add('hot');
         Sound.tick();
-        await wait(fast ? 45 : 40 + Math.pow(i / steps, 3) * 320);
+        await wait(fast ? 45 : 35 + Math.pow(i / steps, 3) * 240 * sp);
       }
     }
     if (g !== st.gen) return;
@@ -1524,7 +1558,7 @@ const Contest = (() => {
     Sound.lock();
     const [px, py] = center(from);
     FX.burst(px, py, { count: 40, speed: [1, 6], colors: FX.GOLD, gravity: 0.02 });
-    await wait(fast ? 120 : 420);
+    await wait(fast ? 120 : 320 * sp);
     if (g !== st.gen) return;
 
     // fly the photo into its group's next empty slot
@@ -1543,7 +1577,7 @@ const Contest = (() => {
       { transform: 'none' },
       { transform: `translate(${(b.left - a.left) * 0.5}px, ${(b.top - a.top) * 0.5 - 80}px) scale(1.4)`, offset: 0.45 },
       { transform: `translate(${b.left + bs / 2 - a.left - a.width / 2}px, ${b.top + b.height / 2 - a.top - a.height / 2}px) scale(${bs / a.width})` },
-    ], { duration: fast ? 420 : 900, easing: 'cubic-bezier(.3,.7,.3,1)' }).finished.catch(() => {});
+    ], { duration: fast ? 420 : 820 * Math.max(0.7, sp), easing: 'cubic-bezier(.3,.7,.3,1)' }).finished.catch(() => {});
     fly.remove();
     if (g !== st.gen) return;
     group.push(chosen);
@@ -1557,8 +1591,12 @@ const Contest = (() => {
     FX.burst(sx, sy, { count: 70, speed: [2, 9], gravity: 0.05 });
 
     if (gd.k >= gd.seq.length) return groupsDone(g);
+    if (gd.auto) {   // keep drawing: the next person after a short pause
+      await wait(gd.fast ? 150 : 420 * sp);
+      if (g !== st.gen) return;
+      return groupDrawNext(!!gd.fast);
+    }
     st.busy = false;
-    if (st.gd.auto) return groupDrawNext(true);
     st.mode = 'groupDraw';
     byId('gdPrompt').innerHTML = `<span class="key">⌨</span> Click to draw the next member of ${groupName(gd.seq[gd.k])}`;
   }
@@ -1590,7 +1628,50 @@ const Contest = (() => {
   function groupDrawAll() {
     if (!st.gd || !['groupDraw', 'groupRolling'].includes(st.mode)) return;
     st.gd.auto = true;
+    st.gd.fast = true;
     if (st.mode === 'groupDraw') groupDrawNext(true);
+  }
+
+  /** The groups were drawn before: show them (✓ on groups that already presented), then start the next one. */
+  async function showGroups(groups) {
+    reset();
+    stepsOn(false);
+    const s = stageNow(), g = st.gen;
+    st.gd = null;
+    byId('gdLabel').textContent = `Stage ${st.stageIdx + 1} · ${s.name}`;
+    byId('gdTitle').textContent = 'The groups';
+    byId('scrGroupDraw').classList.add('gd-show');
+    const pool = byId('gdPool');
+    pool.innerHTML = ''; pool.classList.add('empty');
+    const box = byId('gdGroups');
+    const maxSize = Math.max(...groups.map(x => x.length));
+    box.style.setProperty('--gs', `${Math.max(3.6, Math.min(8, 34 / maxSize))}vh`);
+    box.style.gridTemplateColumns = `repeat(${Math.min(groups.length, 6)}, minmax(0, 1fr))`;
+    let d = 0;
+    box.innerHTML = groups.map((grp, gi) => {
+      const past = grp.every(c => isDone(c));
+      return `<div class="gd-group${past ? ' past' : ''}" data-g="${gi}" style="--k:${gi}">
+        <div class="gd-gname">${groupName(gi)}${past ? ' <small>✓ presented</small>' : ''}</div>
+        <div class="gd-slots">${grp.map(c => `<div class="gd-slot filled" style="--d:${d++}"><img src="${esc(avatarFor(c))}" alt=""><span>${esc(c.name)}</span></div>`).join('')}</div>
+      </div>`;
+    }).join('');
+    const nextGi = groups.findIndex(grp => grp.some(c => !isDone(c)));
+    byId('gdPrompt').textContent = '';
+    replay('scrGroupDraw'); show('scrGroupDraw');
+    FX.warpTo(0.2);
+    Sound.whoosh();
+    st.mode = 'groupsShowing'; st.busy = true;
+    await wait(700 + d * 120);
+    if (g !== st.gen) return;
+    flash(0.4);
+    Sound.chime(); Sound.fanfare();
+    FX.confetti(2500);
+    $$('#gdGroups .gd-group:not(.past)').forEach(el => { const [x, y] = center(el); FX.burst(x, y, { count: 70, speed: [2, 9], gravity: 0.05 }); });
+    await wait(800);
+    if (g !== st.gen) return;
+    byId('gdPrompt').innerHTML = `<span class="key">⌨</span> ${nextGi >= 0 ? `Click to start ${esc(s.name)} with ${esc(groupName(nextGi))}` : 'Click to continue'}`;
+    st.mode = 'groupsDone';
+    st.busy = false;
   }
 
   /* ---------------- winners ceremony ---------------- */
@@ -1903,7 +1984,7 @@ const Contest = (() => {
       case 'qualifyShown': return `${stage}Qualified for ${E().stages[stageIndex(st.qualFor)]?.name || ''} on screen`;
       case 'groupDraw': return `${stage}Group draw: ${st.gd.k} of ${st.gd.seq.length} placed`;
       case 'groupRolling': return `${stage}Group draw: drawing for ${groupName(st.gd.seq[st.gd.k] ?? 0)}…`;
-      case 'groupsDone': return `${stage}Groups drawn`;
+      case 'groupsShowing': case 'groupsDone': return `${stage}The groups on screen`;
       case 'wTitle': return 'Winners · Title';
       case 'wTease': return `Winners · Award ${st.win.i + 1} of ${st.win.list.length}: ${st.win.list[st.win.i].title} (winner hidden)`;
       case 'wRevealing': return `Winners · Revealing ${st.win.list[st.win.i].title}…`;

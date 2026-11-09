@@ -909,3 +909,9 @@
 .gd-slot img { width: var(--gs); height: var(--gs); flex: none; border-radius: 50%; object-fit: cover; border: .3vh solid #f5c451; }
 .gd-slot span { min-width: 0; font-size: clamp(12px, calc(var(--gs) * .36), 30px); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @keyframes slotIn { from { transform: scale(.85); } }
+
+/* the groups again (drawn before) */
+.gd-show .gd-slot.filled { animation: slotShow .6s calc(.5s + var(--d) * .12s) cubic-bezier(.3, 1.5, .5, 1) backwards; }
+@keyframes slotShow { from { opacity: 0; transform: translateY(2vh) scale(.6); } }
+.gd-group.past { opacity: .55; box-shadow: 0 0 0 2px rgba(52, 211, 153, .5); }
+.gd-gname small { font-size: .5em; color: #6ee7b7; letter-spacing: .05em; vertical-align: middle; }
