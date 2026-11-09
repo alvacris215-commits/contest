@@ -101,6 +101,21 @@ const Sound = (() => {
       tone({ f: 783.99, type: 'triangle', t: 0.14, dur: 0.4, vol: 0.18, wet: true });
     },
     beep(last) { tone({ f: last ? 1320 : 880, type: 'square', dur: 0.14, vol: 0.09 }); },
+    /** A snare roll that builds for about 1.7 s (before a winner is revealed). */
+    drumroll() {
+      const n = 40;
+      for (let i = 0; i < n; i++) {
+        const p = i / n;
+        noise({ dur: 0.07, t: i * 0.042, vol: 0.05 + 0.22 * p * p, f1: 2200, f2: 1400, q: 0.7, peak: 0.08 });
+        if (i % 4 === 0) tone({ f: 95, f2: 70, type: 'sine', t: i * 0.042, dur: 0.12, vol: 0.06 + 0.2 * p });
+      }
+    },
+    /** A distant firework: thump and crackle. */
+    firework() {
+      tone({ f: 120, f2: 50, type: 'sine', dur: 0.35, vol: 0.12 });
+      noise({ dur: 0.6, vol: 0.06, f1: 4000, f2: 900, q: 0.6, peak: 0.04 });
+      for (let i = 0; i < 6; i++) tone({ f: 2500 + Math.random() * 2500, type: 'triangle', t: 0.08 + Math.random() * 0.35, dur: 0.06, vol: 0.02 });
+    },
     gong() {
       [98, 196.6, 294.5, 395, 523].forEach((f, i) =>
         tone({ f, type: 'sine', dur: 3 - i * 0.3, vol: 0.32 / (i + 1), attack: 0.01, wet: i > 1 }));

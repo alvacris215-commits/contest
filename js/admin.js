@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS = {
 };
 
 /** In-memory state (mirrored to IndexedDB). */
-const S = { contesters: [], tickets: [], settings: { ...DEFAULT_SETTINGS }, format: null, templates: [], history: [], event: null, activeStage: '' };
+const S = { contesters: [], tickets: [], settings: { ...DEFAULT_SETTINGS }, format: null, templates: [], history: [], event: null, activeStage: '', winners: normalizeWinners() };
 
 /** Contesters who have not presented yet in the active stage. */
 const waiting = () => S.contesters.filter(c => !isDone(c));
@@ -587,7 +587,7 @@ const SettingsUI = {
         app: 'contest-manager', version: 2, exported: new Date().toISOString(),
         contesters: S.contesters, tickets: S.tickets, settings: S.settings,
         format: S.format, templates: S.templates, history: S.history,
-        event: S.event, activeStage: S.activeStage,
+        event: S.event, activeStage: S.activeStage, winners: S.winners,
       };
       download(`contest-backup-${today()}.json`, JSON.stringify(data), 'application/json');
     };
@@ -610,9 +610,10 @@ const SettingsUI = {
           DB.set('history', Array.isArray(data.history) ? data.history : []),
           DB.set('event', data.event || null),
           DB.set('activeStage', data.activeStage || ''),
+          DB.set('winners', data.winners || null),
         ]);
         await Admin.loadData();
-        this.load(); FormatUI.load(); StructureUI.load(); Admin.refreshAll();
+        this.load(); FormatUI.load(); StructureUI.load(); WinnersUI.load(); Admin.refreshAll();
         ContestersUI.resetForm(); TicketsUI.resetForm();
         toast('Backup imported');
       } catch (err) { toast('Import failed: ' + err.message, 'error'); }
@@ -677,6 +678,7 @@ const Admin = {
     StructureUI.init();
     FormatUI.init();
     ResultsUI.init();
+    WinnersUI.init();
     SettingsUI.init();
     LaunchDialog.init();
     Console.init();
@@ -705,6 +707,7 @@ const Admin = {
     const event = await DB.get('event');
     S.event = event ? normalizeEvent(event) : migrateEvent();
     if (!event) await saveEvent();
+    S.winners = normalizeWinners(await DB.get('winners'));
     S.activeStage = (await DB.get('activeStage')) || '';
     if (!S.event.stages.some(s => s.id === S.activeStage)) S.activeStage = S.event.stages[0].id;
     // tickets from before per-stage ticks: "all stages" → every stage ticked; "used" → used in the active stage
@@ -769,6 +772,7 @@ const Admin = {
     ContestersUI.render();
     TicketsUI.render();
     ResultsUI.render();
+    WinnersUI.refresh();
     this.header();
   },
 

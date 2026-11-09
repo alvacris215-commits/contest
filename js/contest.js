@@ -36,7 +36,7 @@ const Contest = (() => {
     mode: null, busy: false, gen: 0, roller: null, round: null,
     pool: [], tpool: [], slot: 0, phaseIdx: -1, tm: null, raf: 0, cd: null, cdFn: null, menu: false, f: null,
     remote: false, stageIdx: -1, explainOnly: false, revealed: 0, info: -1,
-    score: null,
+    score: null, win: null,
   };
   const E = () => S.event;
   const stageNow = () => E().stages[st.stageIdx];
@@ -91,6 +91,7 @@ const Contest = (() => {
     showUI();
     if (opts.start === 'standby') standby();
     else if (opts.start === 'stage') runStage(opts.stage || 0);
+    else if (opts.start === 'winners') winners();
     else opening();
   }
 
@@ -250,6 +251,10 @@ const Contest = (() => {
       case 'scoreWait': return st.remote ? null : openScoreEntry();
       case 'rankingShown': return stageEnd();
       case 'scoreShown': return st.score.idx + 1 < st.round.team.length ? scoreWait(st.score.idx + 1) : newRound();
+      case 'wTitle': return TitleFX.done() ? winnerTease(0) : TitleFX.finish();
+      case 'wTease': return winnerReveal();
+      case 'wShown': return st.win.i + 1 < st.win.list.length ? winnerTease(st.win.i + 1) : winnersFinale();
+      case 'wFinale': return celebrate();
     }
   }
 
@@ -1358,6 +1363,239 @@ const Contest = (() => {
     st.busy = false;
   }
 
+  /* ---------------- winners ceremony ---------------- */
+  const medalOf = a => MEDALS[a.medal] || MEDALS.gold;
+
+  function winners() {
+    st.stageIdx = -1;
+    st.round = null;
+    st.win = { list: winnersOrder(), i: -1 };
+    const n = st.win.list.length;
+    if (!n) {
+      reset();
+      return message('No winners yet', 'Choose the winners in the Winners tab of the dashboard.', [{ label: '✕ Back to dashboard', fn: close }], 'final');
+    }
+    titleScreen({
+      kicker: E().title, title: S.winners.title || 'The Winners', info: `${n} award${n === 1 ? '' : 's'}`,
+      prompt: 'Click to reveal the first award', mode: 'wTitle',
+    });
+  }
+
+  /** Scores under a winner: one row per stage (a person) or per member (a group). */
+  function winnerScoresHTML(a, ppl) {
+    if (!S.winners.showScores) return '';
+    const recs = ppl.map(c => ({ c, r: personRecord(c.id) }));
+    if (!recs.some(x => x.r.overall != null)) return '';
+    const num = v => `<b class="wn-v" data-to="${v == null ? '' : v}">${v == null ? '–' : '0.00'}</b>`;
+    let rows, total, totalLabel;
+    if (a.kind === 'person') {
+      const r = recs[0].r;
+      rows = r.stages.map(s => `
+        <div class="wn-row">
+          <span class="wn-l"><i>${esc(s.icon)}</i>${esc(s.name)}</span>
+          <span class="wn-js">${s.rounds.map(rd => rd.scores.map(v => `<em>${esc(fmtScoreW(v))}</em>`).join('')).join('<i class="wn-sep"></i>')}</span>
+          ${num(s.avg)}
+        </div>`);
+      total = r.overall; totalLabel = r.stages.length > 1 ? 'Overall average' : 'Average score';
+    } else {
+      rows = recs.map(({ c, r }) => `
+        <div class="wn-row">
+          <span class="wn-l"><img src="${esc(avatarFor(c))}" alt="">${esc(c.name)}</span>
+          <span class="wn-js">${r.stages.map(s => `<em title="${esc(s.name)}">${esc(s.icon)} ${fmtAvg(s.avg)}</em>`).join('')}</span>
+          ${num(r.overall)}
+        </div>`);
+      total = meanOf(recs.map(x => x.r.overall).filter(v => v != null)); totalLabel = 'Team average';
+    }
+    return `<div class="wn-sh">✦ Scores from the rounds ✦</div>
+      <div class="wn-rows n${Math.min(rows.length, 6)}">${rows.map((h, k) => h.replace('class="wn-row"', `class="wn-row" style="--k:${k}"`)).join('')}</div>
+      <div class="wn-total"><span>${totalLabel}</span>${num(total)}</div>`;
+  }
+  const fmtScoreW = v => (Number.isInteger(v) ? String(v) : String(+(+v).toFixed(2)));
+
+  /** An award on screen with its winner hidden: the suspense before the reveal. */
+  function winnerTease(i) {
+    reset();
+    stepsOn(false);
+    const W = st.win, a = W.list[i];
+    if (!a) return winnersFinale();
+    W.i = i;
+    const ppl = awardPeople(a), group = a.kind === 'group';
+    const scr = byId('scrWinner');
+    scr.dataset.medal = a.medal;
+    scr.classList.remove('rolling', 'revealed', 'scored');
+    byId('wnCount').textContent = `Award ${i + 1} of ${W.list.length}`;
+    byId('wnMedal').textContent = medalOf(a).icon;
+    byId('wnTitle').innerHTML = words(a.title || 'Award');
+    const pp = byId('wnPeople');
+    pp.className = `wn-people n${Math.min(ppl.length, 6)}${group ? ' group' : ''}`;
+    pp.innerHTML = ppl.map((c, k) => `
+      <div class="wn-p" style="--k:${k}">
+        <div class="wn-flip">
+          <div class="wn-face wn-back"><div class="photo-frame"><div class="q">?</div></div></div>
+          <div class="wn-face wn-front"><div class="photo-frame"><img src="${esc(avatarFor(c))}" alt=""></div></div>
+        </div>
+        ${group ? `<div class="wn-pname">${esc(c.name)}</div>` : ''}
+      </div>`).join('');
+    byId('wnName').innerHTML = words(awardName(a));
+    byId('wnName').classList.toggle('long', awardName(a).length > 22);
+    byId('wnNote').textContent = a.note;
+    const sc = winnerScoresHTML(a, ppl);
+    byId('wnScores').innerHTML = sc;
+    byId('wnBody').classList.toggle('has-scores', !!sc);
+    byId('wnPrompt').textContent = 'Click to reveal the winner';
+    replay('scrWinner'); show('scrWinner');
+    FX.warpTo(0.2);
+    Sound.whoosh();
+    const g = st.gen;
+    setTimeout(() => { if (g === st.gen) { Sound.magic(); FX.sparkle(byId('wnPeople'), 3000); } }, 500);
+    st.mode = 'wTease';
+  }
+
+  /** Drumroll, particles rush in, flash: the winner appears, then their scores count up. */
+  async function winnerReveal() {
+    const g = st.gen, a = st.win.list[st.win.i];
+    st.busy = true; st.mode = 'wRevealing';
+    const scr = byId('scrWinner'), pp = byId('wnPeople');
+    byId('wnPrompt').textContent = '';
+    scr.classList.add('rolling');
+    Sound.drumroll();
+    let [x, y] = center(pp);
+    FX.implode(x, y, { count: 260, time: 1.6 });
+    FX.warpTo(1);
+    await wait(1750);
+    if (g !== st.gen) return;
+
+    FX.warpTo(0.08);
+    scr.classList.remove('rolling');
+    scr.classList.add('revealed');
+    flash(0.95, a.medal === 'silver' ? '#eef2ff' : '#fff7d6');
+    Sound.boom(); Sound.fanfare(); Sound.chime();
+    [x, y] = center(pp);
+    FX.shockwave(x, y);
+    FX.shockwave(x, y, { dur: 1.5, color: '196,181,253', width: 3 });
+    FX.burst(x, y, { count: 320, speed: [3, 20], life: [0.8, 2.4], gravity: 0.05 });
+    FX.burst(x, y, { count: 110, shape: 'star', colors: FX.GOLD, speed: [1, 10], life: [1.2, 2.6], gravity: 0.015 });
+    FX.confetti(5500);
+    $$('#wnPeople .photo-frame').forEach(el => FX.sparkle(el, 10000));
+    fireworks(g, 7000);
+    await wait(1800);
+    if (g !== st.gen) return;
+
+    const rows = $$('#wnScores .wn-row');
+    if (rows.length || $('#wnScores .wn-total')) {
+      scr.classList.add('scored');
+      Sound.whoosh();
+      await wait(500);
+      for (const row of rows) {
+        if (g !== st.gen) return;
+        row.classList.add('in');
+        Sound.lock();
+        const v = row.querySelector('.wn-v');
+        if (v.dataset.to !== '') countUp(v, +v.dataset.to, 2, 650);
+        await wait(Math.max(260, Math.min(650, 2600 / rows.length)));
+      }
+      const tot = $('#wnScores .wn-total');
+      if (tot && g === st.gen) {
+        await wait(250);
+        tot.classList.add('in');
+        Sound.rise();
+        const v = tot.querySelector('.wn-v');
+        if (v.dataset.to !== '') await countUp(v, +v.dataset.to, 2, 1100);
+        if (g !== st.gen) return;
+        const [tx, ty] = center(tot);
+        Sound.chime();
+        FX.burst(tx, ty, { count: 120, speed: [2, 11], gravity: 0.04 });
+        FX.burst(tx, ty, { count: 30, shape: 'star', colors: FX.GOLD, speed: [1, 6], gravity: 0.015 });
+        FX.sparkle(tot, 5000);
+      }
+    }
+    if (g !== st.gen) return;
+    const last = st.win.i + 1 >= st.win.list.length;
+    byId('wnPrompt').innerHTML = `<span class="key">⌨</span> ${last ? 'Click to see all the winners together' : 'Click for the next award'}`;
+    st.mode = 'wShown';
+    st.busy = false;
+  }
+
+  /** Bursts of colour across the top of the screen for a while. */
+  function fireworks(g, ms) {
+    const until = performance.now() + ms;
+    const palettes = [FX.GOLD, FX.MAGIC, FX.CONF, ['#ffffff', '#c4b5fd', '#8b5cf6'], ['#fff7d6', '#38bdf8', '#ffffff']];
+    const one = () => {
+      if (g !== st.gen || performance.now() > until) return;
+      const W = innerWidth, H = innerHeight;
+      const x = W * (0.08 + Math.random() * 0.84), y = H * (0.08 + Math.random() * 0.4);
+      const colors = palettes[Math.floor(Math.random() * palettes.length)];
+      FX.burst(x, y, { count: 90 + Math.floor(Math.random() * 60), speed: [2, 9], life: [0.9, 1.9], gravity: 0.07, drag: 0.955, colors });
+      FX.burst(x, y, { count: 14, shape: 'star', colors: FX.GOLD, speed: [0.5, 4], life: [1, 2], gravity: 0.02 });
+      FX.shockwave(x, y, { max: 90 + Math.random() * 80, dur: 0.6, width: 2, color: '255,240,200' });
+      Sound.firework();
+      setTimeout(one, 380 + Math.random() * 620);
+    };
+    one();
+  }
+
+  /** Every winner together. */
+  async function winnersFinale() {
+    reset();
+    stepsOn(false);
+    const g = st.gen;
+    const list = S.winners.revealUp ? st.win.list.slice().reverse() : st.win.list.slice();
+    st.win.i = st.win.list.length;
+    byId('wfLabel').textContent = E().title;
+    byId('wfTitle').textContent = S.winners.closing || 'Congratulations!';
+    const grid = byId('wfGrid'), n = list.length;
+    const cols = n <= 4 ? n : n <= 6 ? 3 : n <= 8 ? 4 : 5;
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    grid.style.setProperty('--rows', Math.ceil(n / cols));
+    grid.className = `wf-grid c${cols}`;
+    grid.innerHTML = list.map((a, k) => {
+      const ppl = awardPeople(a), ov = meanOf(ppl.map(c => personRecord(c.id).overall).filter(v => v != null));
+      return `<div class="wf-card" data-medal="${a.medal}" style="--k:${k}">
+        <div class="wf-medal">${medalOf(a).icon}</div>
+        <div class="wf-award">${esc(a.title)}</div>
+        <div class="wf-photos n${Math.min(ppl.length, 6)}">${ppl.map(c => `<img src="${esc(avatarFor(c))}" alt="">`).join('')}</div>
+        <div class="wf-name">${esc(awardName(a))}</div>
+        ${a.kind === 'group' && a.team.trim() ? `<div class="wf-members">${ppl.map(c => esc(c.name)).join(' · ')}</div>` : ''}
+        ${S.winners.showScores && ov != null ? `<div class="wf-score">${fmtAvg(ov)}</div>` : ''}
+      </div>`;
+    }).join('');
+    byId('wfPrompt').textContent = '';
+    replay('scrWinnersAll'); show('scrWinnersAll');
+    FX.warpTo(0.15);
+    st.mode = 'wFinale';
+    st.busy = true;
+    Sound.whoosh();
+    const cards = $$('#wfGrid .wf-card');
+    for (const c of cards) {
+      await wait(Math.max(160, Math.min(420, 2400 / cards.length)));
+      if (g !== st.gen) return;
+      c.classList.add('in');
+      Sound.lock();
+      const [x, y] = center(c);
+      FX.burst(x, y, { count: 60, speed: [2, 8], gravity: 0.05 });
+    }
+    await wait(500);
+    if (g !== st.gen) return;
+    flash(0.7);
+    Sound.boom(); Sound.fanfare();
+    FX.confetti(8000);
+    fireworks(g, 14000);
+    cards.forEach(c => FX.sparkle(c.querySelector('.wf-photos'), 8000));
+    byId('wfPrompt').textContent = '';
+    st.busy = false;
+  }
+
+  /** Click on the last screen: more fireworks. */
+  function celebrate() {
+    const x = innerWidth * (0.2 + Math.random() * 0.6), y = innerHeight * (0.2 + Math.random() * 0.3);
+    flash(0.25);
+    Sound.chime();
+    FX.shockwave(x, y, { dur: 1, width: 3 });
+    FX.burst(x, y, { count: 220, speed: [3, 15], life: [0.8, 2], gravity: 0.05, colors: FX.CONF });
+    FX.confetti(2500);
+    fireworks(st.gen, 5000);
+  }
+
   /* ---------------- remote control (presenter window) ---------------- */
   function command(c) {
     if (st.menu) toggleMenu(false);
@@ -1373,6 +1611,12 @@ const Contest = (() => {
       case 'endRound': return endRoundNow();
       case 'endStage': return st.stageIdx < 0 ? null : st.mode === 'rankingShown' ? stageEnd() : rankingOrEnd();
       case 'standby': return standby();
+      case 'winners': return winners();
+      case 'winnerAt':
+        st.stageIdx = -1; st.round = null;
+        st.win = { list: winnersOrder(), i: -1 };
+        if (!st.win.list.length) return winners();
+        return c.i >= st.win.list.length ? winnersFinale() : winnerTease(c.i);
       case 'showScore': return revealScores(c.scores || []);
       case 'resetStage': {
         const s = E().stages[c.i];
@@ -1410,6 +1654,11 @@ const Contest = (() => {
       case 'ranking': return `${stage}Showing the ranking…`;
       case 'rankingShown': return `${stage}Ranking on screen`;
       case 'final': return 'Final screen';
+      case 'wTitle': return 'Winners · Title';
+      case 'wTease': return `Winners · Award ${st.win.i + 1} of ${st.win.list.length}: ${st.win.list[st.win.i].title} (winner hidden)`;
+      case 'wRevealing': return `Winners · Revealing ${st.win.list[st.win.i].title}…`;
+      case 'wShown': { const a = st.win.list[st.win.i]; return `Winners · ${a.title}: ${awardName(a)}`; }
+      case 'wFinale': return 'Winners · All the winners together';
       case 'message': return 'Message on screen';
       default: return m || '';
     }
@@ -1423,6 +1672,7 @@ const Contest = (() => {
       mode: st.mode, busy: st.busy, label: describe(),
       prompt: pr ? pr.textContent.replace(/\s+/g, ' ').trim() : '',
       stageIdx: st.stageIdx, revealed: st.revealed, info: st.info,
+      win: st.win && /^w[A-Z]/.test(st.mode || '') ? { i: st.win.i, n: st.win.list.length, ids: st.win.list.map(a => a.id) } : null,
       round: r ? { num: r.num, team: r.team.map(c => `#${c.num} ${c.name}`), tickets: r.tickets.map(t => `#${t.num}${t.title ? ' ' + t.title : ''}`), committed: r.committed } : null,
       timer: tm && p ? { name: p.name, color: p.color, remain: Math.max(0, Math.round(tm.paused ? tm.remain : tm.end - performance.now())), total: tm.total, paused: tm.paused } : null,
       fullscreen: !!document.fullscreenElement,

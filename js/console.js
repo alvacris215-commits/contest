@@ -1,8 +1,9 @@
 'use strict';
 
-const SOUND_NAMES = ['tick', 'softTick', 'lock', 'whoosh', 'rise', 'magic', 'boom', 'chime', 'fanfare', 'start', 'beep', 'gong'];
+const SOUND_NAMES = ['tick', 'softTick', 'lock', 'whoosh', 'rise', 'magic', 'boom', 'chime', 'fanfare', 'start', 'beep', 'gong', 'drumroll', 'firework'];
 const KEY_IGNORE = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab', 'F5', 'F11', 'F12', 'ContextMenu', 'NumLock', 'AltGraph', 'OS', 'Escape']);
 const OPENING_MODES = ['standby', 'evTitle', 'structure', 'stageInfo', 'closing'];
+const WINNER_MODES = ['wTitle', 'wTease', 'wRevealing', 'wShown', 'wFinale'];
 
 /* ============================ Audience window ============================ */
 const Audience = {
@@ -64,7 +65,8 @@ const LaunchDialog = {
         <div><b>${esc(s.name)}</b><div class="muted small">${esc(stageFormatName(s))}${stageFacts(s).length ? ' · ' + esc(stageFacts(s).slice(1).join(' · ')) : ''}</div></div>
       </div>`).join('');
     byId('sdFrom').innerHTML = `<option value="opening">the opening (title and structure)</option>`
-      + e.stages.map((s, i) => `<option value="${i}">Stage ${i + 1}: ${esc(s.name)}</option>`).join('');
+      + e.stages.map((s, i) => `<option value="${i}">Stage ${i + 1}: ${esc(s.name)}</option>`).join('')
+      + '<option value="winners">the winners ceremony</option>';
     const warns = [];
     const running = e.stages.filter(s => stageFormat(s));
     if (running.length && !S.contesters.length) warns.push('No contesters are registered yet. The opening works, but stages with draws need contesters.');
@@ -89,13 +91,14 @@ const LaunchDialog = {
   one() {
     const from = byId('sdFrom').value;
     this.close();
-    Contest.open(from === 'opening' ? { start: 'opening' } : { start: 'stage', stage: +from });
+    Contest.open(from === 'opening' ? { start: 'opening' } : from === 'winners' ? { start: 'winners' } : { start: 'stage', stage: +from });
   },
 };
 
 /* ============================ Presenter console ============================ */
 const Console = {
   status: null,
+  pending: null,
   lastSeen: 0,
   cache: {},
 
@@ -116,6 +119,7 @@ const Console = {
       const d = b.dataset;
       if (d.cmd === 'runStage') return this.runStage(+d.i);
       if (d.cmd === 'resetStage') return this.resetStage();
+      if (d.cmd === 'winners' || d.cmd === 'winnerAt') return this.cmd(d.cmd, { reload: true, ...(d.i !== undefined ? { i: +d.i } : {}) });
       this.cmd(d.cmd, d.i !== undefined ? { i: +d.i } : d.k !== undefined ? { k: d.k } : {});
     });
     const body = byId('csBody');
@@ -214,6 +218,7 @@ const Console = {
     if (m.type === 'status') {
       this.status = m.status;
       this.lastSeen = Date.now();
+      if (this.pending) { const p = this.pending; this.pending = null; Link.send('cmd', p); }
       if (this.isOpen()) this.render();
     } else if (m.type === 'sound') {
       const f = Sound[m.name];
@@ -317,6 +322,17 @@ const Console = {
     slides += slide('closing', `🚀 ${esc(e.closingTitle || 'Begin')}`, mode === 'closing');
     this.set('csSlides', slides);
 
+    const win = s && s.win, inWin = WINNER_MODES.includes(mode);
+    const order = winnersOrder();
+    let wl = slide('winners', `👑 ${esc(S.winners.title || 'The Winners')}`, mode === 'wTitle');
+    order.forEach((a, i) => {
+      const cur = inWin && win && win.i === i && mode !== 'wFinale';
+      wl += slide('winnerAt', `${MEDALS[a.medal].icon} ${esc(a.title)} <small>${esc(awardName(a))}${cur ? (mode === 'wTease' ? ' · hidden' : ' · shown') : ''}</small>`, cur, i);
+    });
+    if (order.length) wl += slide('winnerAt', '🎉 All the winners', mode === 'wFinale', order.length);
+    else wl += '<div class="muted small">No winners yet. Add them in the Winners tab.</div>';
+    this.set('csWinners', wl);
+
     this.set('csStages', e.stages.map((st, i) => {
       const done = S.contesters.filter(c => isDone(c, st.id)).length, f = stageFormat(st);
       const cur = s && !opening && s.stageIdx === i;
@@ -339,6 +355,9 @@ const Console = {
     else if (mode === 'timer') nextLabel = 'Timer running';
     else if (mode === 'scoreWait') nextLabel = 'Enter the scores above';
     else if (mode === 'scoring') nextLabel = 'Showing the scores…';
+    else if (mode === 'wTease') nextLabel = '✦ Reveal the winner';
+    else if (mode === 'wShown') nextLabel = win && win.i + 1 >= win.n ? 'Show all the winners' : 'Next award';
+    else if (mode === 'wFinale' && !(s && s.busy)) nextLabel = '🎆 More fireworks';
     else if (s && s.busy) nextLabel = 'Animating…';
     nb.querySelector('b').textContent = nextLabel;
 

@@ -446,3 +446,32 @@ body.consoling #app { display: none; }
 .t-card .t-words { padding: 0 12px 10px; }
 .t-card .t-words .words { max-height: 54px; overflow: hidden; }
 .t-words .words span { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; color: var(--gold); background: rgba(245, 196, 81, .1); border: 1px solid rgba(245, 196, 81, .35); }
+
+/* ---------- winners tab ---------- */
+.w-settings { margin-top: 14px; }
+.w-go { margin-top: 18px; align-items: center; }
+.award-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }
+.award-card { --mc: var(--gold); background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--mc); border-radius: var(--radius); padding: 16px 18px; }
+.award-card[data-medal="silver"] { --mc: #cbd5e1; }
+.award-card[data-medal="bronze"] { --mc: #f0a46b; }
+.award-card[data-medal="special"] { --mc: #c4b5fd; }
+.award-card .s-head .ph-idx { --pc: var(--mc); }
+.a-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; align-items: start; }
+.a-wide { grid-column: 1 / -1; }
+.a-members { display: flex; flex-direction: column; gap: 8px; }
+.a-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.a-mem { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 4px; border-radius: 999px; background: rgba(139, 92, 246, .14); border: 1px solid rgba(139, 92, 246, .35); font-size: 14px; }
+.a-mem img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.a-mem button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .1); color: var(--text); cursor: pointer; font-size: 11px; }
+.a-mem button:hover { background: #dc2626; }
+.a-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.a-scores { display: flex; flex-direction: column; gap: 6px; }
+.a-scores:empty { display: none; }
+.a-sc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13px; padding: 8px 12px; border-radius: 10px; background: rgba(0, 0, 0, .22); }
+.a-sc span { color: var(--muted); }
+.a-sc span b { color: var(--text); }
+.a-sc .a-ov { margin-left: auto; color: var(--gold); }
+.a-sc .a-ov b { color: var(--gold); font-size: 15px; }
+.w-rank #wRank { overflow-x: auto; margin-top: 12px; }
+.w-rank .score { color: var(--gold); }
+@media (max-width: 760px) { .a-grid { grid-template-columns: 1fr; } }

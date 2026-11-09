@@ -29,6 +29,7 @@
     <button data-tab="tickets">🎟 Tickets / Problems</button>
     <button data-tab="format">🧩 Format</button>
     <button data-tab="results">🏆 Rounds</button>
+    <button data-tab="winners">👑 Winners</button>
     <button data-tab="settings">⚙ Settings</button>
   </nav>
 
@@ -300,6 +301,41 @@
       <div class="rank-grid" id="hRank"></div>
     </section>
 
+    <!-- ---------- WINNERS ---------- -->
+    <section class="tab" id="tab-winners">
+      <div class="panel">
+        <h2>👑 Winners ceremony</h2>
+        <p class="hint">Add the awards, choose who won each one (a person or a group), then click <b>Show the winners</b>. The audience screen reveals the awards one by one, each with the winner's scores from the rounds, and ends with all the winners together.</p>
+        <div class="settings-grid w-settings">
+          <label>Title on screen<input type="text" data-w="title" placeholder="The Winners"></label>
+          <label>Last slide, with all the winners<input type="text" data-w="closing" placeholder="Congratulations!"></label>
+          <label class="check"><input type="checkbox" data-w="revealUp"> Reveal from the bottom of the list up, so the first award comes last</label>
+          <label class="check"><input type="checkbox" data-w="showScores"> Show each winner's scores from the rounds</label>
+        </div>
+        <div class="btn-row w-go">
+          <button class="btn btn-gold btn-lg" id="wShow">✦ Show the winners</button>
+          <button class="btn" id="wShowHere">Show on this screen</button>
+          <span class="muted small" id="wSummary"></span>
+        </div>
+      </div>
+
+      <div class="list-head">
+        <h2>Awards <span class="muted" id="wCount"></span></h2>
+        <div class="btn-row">
+          <button class="btn btn-sm" id="wSuggest">✨ Fill 1st–3rd from the scores</button>
+          <button class="btn btn-primary" id="wAddPerson">＋ Personal award</button>
+          <button class="btn btn-primary" id="wAddGroup">＋ Group award</button>
+        </div>
+      </div>
+      <div class="award-list" id="wList"></div>
+
+      <div class="panel w-rank">
+        <h2>📊 Overall scores</h2>
+        <p class="hint">Each person's average in every stage, and the overall average (the mean of their stage averages). Use it to choose the winners.</p>
+        <div id="wRank"></div>
+      </div>
+    </section>
+
     <!-- ---------- SETTINGS ---------- -->
     <section class="tab" id="tab-settings">
       <div class="panel">
@@ -382,6 +418,8 @@
       <div class="cs-list" id="csSlides"></div>
       <h3>Stages</h3>
       <div class="cs-list" id="csStages"></div>
+      <h3>Winners</h3>
+      <div class="cs-list" id="csWinners"></div>
       <button class="cs-item" data-cmd="standby">⏸ Show the waiting screen</button>
     </aside>
     <section class="cs-col cs-main">
@@ -602,6 +640,32 @@
       <div class="prompt" id="rkPrompt"></div>
     </section>
 
+    <section class="scr" id="scrWinner">
+      <div class="wn-beams"><i></i><i></i></div>
+      <div class="wn-head">
+        <div class="round-label" id="wnCount"></div>
+        <div class="wn-award"><span class="wn-medal" id="wnMedal"></span><h2 class="wn-title" id="wnTitle"></h2></div>
+      </div>
+      <div class="wn-body" id="wnBody">
+        <div class="wn-who">
+          <div class="wn-rays"></div>
+          <div class="wn-people" id="wnPeople"></div>
+          <div class="wn-name" id="wnName"></div>
+          <div class="wn-note" id="wnNote"></div>
+        </div>
+        <div class="wn-scores" id="wnScores"></div>
+      </div>
+      <div class="prompt" id="wnPrompt"></div>
+    </section>
+
+    <section class="scr" id="scrWinnersAll">
+      <div class="wn-beams"><i></i><i></i></div>
+      <div class="round-label" id="wfLabel"></div>
+      <h2 class="scr-title wf-title" id="wfTitle"></h2>
+      <div class="wf-grid" id="wfGrid"></div>
+      <div class="prompt" id="wfPrompt"></div>
+    </section>
+
     <!-- round done -->
     <section class="scr" id="scrDone">
       <div class="done-trophy">🏆</div>
@@ -661,6 +725,7 @@
 <script src="js/event.js"></script>
 <script src="js/title.js"></script>
 <script src="js/link.js"></script>
+<script src="js/winners.js"></script>
 <script src="js/contest.js"></script>
 <script src="js/console.js"></script>
 <script src="js/admin.js"></script>

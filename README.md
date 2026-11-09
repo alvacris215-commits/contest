@@ -11,6 +11,7 @@ Open `index.html` in **Google Chrome** or **Microsoft Edge**. Double-clicking th
 | 🎟 Tickets / Problems | Create problems as an image, as text, or as image + text. Tick the stages that can draw each ticket: in the form, or with the numbered buttons on each ticket card. Above the list, pick a stage and use **Tick all for this stage** / **Untick all**. "Used" is tracked per stage, so a ticket used in stage 1 can still be drawn in stage 2. Add **adjectives** to a ticket (separated by commas or new lines) and they appear under the picture on stage as soon as the round's timer starts. |
 | 🧩 Format | How a round with draws works: people per round, tickets, timers. Save formats as templates (see below). |
 | 🏆 Rounds | History of each round: stage, people and tickets. Export it as CSV. |
+| 👑 Winners | The awards for the ceremony: personal or group, who won each one, and everyone's overall scores. |
 | ⚙ Settings | Sound, fullscreen, the pause before a reveal, and backup export/import. |
 
 Everything is saved automatically in the browser's IndexedDB storage. To move the contest to another computer, use **Settings → Export backup** and then **Import backup** there. The backup includes the structure, formats and templates.
@@ -72,6 +73,23 @@ After a round's timers, the audience screen shows the first person's photo and n
 When everyone in a stage has presented (or you click **End this stage**), the audience sees the **ranking**: places 4 and below appear from the bottom up, then the podium for 3rd, 2nd and 1st. The next key shows the "stage complete" screen.
 
 Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. In one-screen mode, press a key on the waiting screen to open a small score form.
+
+### Winners ceremony
+
+In **👑 Winners**, add the awards:
+
+- **Personal award:** pick the winner.
+- **Group award:** add the members, or use a team from a round, and optionally give the group a name.
+- Each award has a title, a medal (gold, silver, bronze or special) and an optional line shown under the name.
+- **Fill 1st–3rd from the scores** creates the top three from the overall averages. The overall average is the mean of a person's stage averages; the table at the bottom shows everyone's.
+
+Click **Show the winners**. The console and the audience screen open (or are reused), and the ceremony starts:
+
+1. The title "The Winners" is drawn in gold.
+2. For each award, the first click shows the award with a hidden winner. The next click plays a drumroll, flips the photo, and shows the winner with fireworks, then their scores slide in: each stage's judge scores and average (or each member's averages for a group), then the overall or team average.
+3. After the last award, all the winners appear together. Each click there sets off more fireworks.
+
+By default, awards are revealed from the bottom of the list up, so the award at the top comes last. The console's **Winners** list jumps to any award. **Show on this screen** runs the ceremony on the dashboard's screen instead.
 
 ### One screen
 
