@@ -72,7 +72,28 @@ After a round's timers, the audience screen shows the first person's photo and n
 
 When everyone in a stage has presented (or you click **End this stage**), the audience sees the **ranking**: places 4 and below appear from the bottom up, then the podium for 3rd, 2nd and 1st. The next key shows the "stage complete" screen.
 
-Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. In one-screen mode, press a key on the waiting screen to open a small score form.
+Scores are saved with each round. The **🏆 Rounds** tab shows them, ranks everyone per stage, and includes every judge's score in the CSV export. Delete one round with its 🗑 button: its scores leave the rankings, and you can choose to mark its people as waiting again so they present again. In one-screen mode, press a key on the waiting screen to open a small score form.
+
+### Qualifying and random groups
+
+Each stage in **🗂 Structure** has a **Who takes part** setting:
+
+- **Everyone** (the default).
+- **Top scorers only:** choose how many go through, whether they are ranked by the **average** or the **total** of the stage scores, and which earlier stages count (none ticked means all earlier stages). A person's score in a stage is their judges' average in that stage; a counted stage they have no score in counts as 0. With **Everyone tied at the cut-off also goes through**, a tie at the last place lets everyone tied in.
+
+The card shows who qualifies right now and the cut-off score. In **👥 Contesters**, pick that stage to see who did not qualify.
+
+Tick **Draw random groups at the start of this stage** to put the stage's people into groups: either groups of N people or N groups (the sizes differ by one at most).
+
+**Who goes through is announced at the end of the stage before.** For example, when stage 2 ends: its ranking, then **Qualified for the Final**. The qualifiers' cards appear from the last place up to the first, with their score in each counted stage and their average (or total). Then the "stage complete" screen.
+
+When the stage itself starts, after its title:
+
+1. If the qualifiers were not announced yet (for example when you start the Final directly), they are shown first.
+2. **Group draw:** each click spins over the remaining people, stops on one, and flies them into the next group (Group A, B, C… in turn). **Draw all the rest** in the console finishes it quickly.
+3. **The rounds go group by group:** each round's team is the next group, then tickets, timers and scores as the stage's format says.
+
+The groups are saved. In the console, each stage has **Show who qualified** and **Draw the groups (again)**; the Structure card has **Clear the groups**.
 
 ### Winners ceremony
 
@@ -86,7 +107,7 @@ In **👑 Winners**, add the awards:
 Click **Show the winners**. The console and the audience screen open (or are reused), and the ceremony starts:
 
 1. The title "The Winners" is drawn in gold.
-2. For each award, the first click shows the award with a hidden winner. The next click plays a drumroll, flips the photo, and shows the winner with fireworks, then their scores slide in: each stage's judge scores and average (or each member's averages for a group), then the overall or team average.
+2. For each award, the first click shows the award with a hidden winner. The next click plays a drumroll, flips the photo, and shows the winner with fireworks, then their scores slide in: for a person, each stage's judge scores and stage score; for a group, each member's score in every stage.
 3. After the last award, all the winners appear together. Each click there sets off more fireworks.
 
 By default, awards are revealed from the bottom of the list up, so the award at the top comes last. The console's **Winners** list jumps to any award. **Show on this screen** runs the ceremony on the dashboard's screen instead.

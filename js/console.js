@@ -19,6 +19,12 @@ const Audience = {
         Contest.command(m);
       } else if (m.type === 'hello') {
         Link.send('status', { status: Contest.status() });
+      } else if (m.type === 'history') {
+        // a round was deleted in the dashboard: keep the same objects for the rounds that remain
+        const fresh = (await DB.get('history')) || [];
+        S.history = fresh.map(h => S.history.find(x => x.id === h.id) || h);
+        const cs = await DB.all('contesters');
+        S.contesters.forEach(c => { const f = cs.find(x => x.id === c.id); if (f) c.done = f.done; });
       }
     });
     Contest.open({ remote: true, start: 'standby' });
@@ -120,6 +126,12 @@ const Console = {
       if (d.cmd === 'runStage') return this.runStage(+d.i);
       if (d.cmd === 'resetStage') return this.resetStage();
       if (d.cmd === 'winners' || d.cmd === 'winnerAt') return this.cmd(d.cmd, { reload: true, ...(d.i !== undefined ? { i: +d.i } : {}) });
+      if (d.cmd === 'groupDraw') {
+        const s = S.event.stages[+d.i];
+        if (stageGroups(s) && !confirm(`Draw the groups of ${s.name} again? The groups drawn before are replaced.`)) return;
+        return this.cmd('groupDraw', { i: +d.i, reload: true });
+      }
+      if (d.cmd === 'qualifiers') return this.cmd('qualifiers', { i: +d.i, reload: true });
       this.cmd(d.cmd, d.i !== undefined ? { i: +d.i } : d.k !== undefined ? { k: d.k } : {});
     });
     const body = byId('csBody');
@@ -334,12 +346,17 @@ const Console = {
     this.set('csWinners', wl);
 
     this.set('csStages', e.stages.map((st, i) => {
-      const done = S.contesters.filter(c => isDone(c, st.id)).length, f = stageFormat(st);
+      const ent = stageEntrants(st), f = stageFormat(st);
+      const done = ent.filter(c => isDone(c, st.id)).length;
       const cur = s && !opening && s.stageIdx === i;
+      const extra = [];
+      if (st.entry === 'top') extra.push(`<button class="btn btn-sm" data-cmd="qualifiers" data-i="${i}" ${on ? '' : 'disabled'}>🏅 Show who qualified</button>`);
+      if (st.groups && f) extra.push(`<button class="btn btn-sm" data-cmd="groupDraw" data-i="${i}" ${on ? '' : 'disabled'}>🎲 ${stageGroups(st) ? 'Draw the groups again' : 'Draw the groups'}</button>`);
       return `<div class="cs-stage ${cur ? 'cur' : ''}">
         <div class="cs-stage-top"><span class="ph-idx">${i + 1}</span><b>${esc(st.icon)} ${esc(st.name)}</b></div>
-        <div class="muted small">${esc(stageFormatName(st))}${f ? ` · ${done}/${S.contesters.length} presented` : ''}</div>
+        <div class="muted small">${esc(stageFormatName(st))}${f ? ` · ${done}/${ent.length} presented` : ''}${st.entry === 'top' ? ` · ${ent.length} qualified` : ''}${st.groups && stageGroups(st) ? ` · ${stageGroups(st).length} groups` : ''}</div>
         <button class="btn btn-sm ${cur ? '' : 'btn-primary'}" data-cmd="runStage" data-i="${i}" ${on ? '' : 'disabled'}>${cur ? '↺ Restart stage title' : '▶ Start this stage'}</button>
+        ${extra.join('')}
       </div>`;
     }).join(''));
 
@@ -355,6 +372,8 @@ const Console = {
     else if (mode === 'timer') nextLabel = 'Timer running';
     else if (mode === 'scoreWait') nextLabel = 'Enter the scores above';
     else if (mode === 'scoring') nextLabel = 'Showing the scores…';
+    else if (mode === 'groupDraw') nextLabel = '🎲 Draw the next member';
+    else if (mode === 'groupsDone') nextLabel = 'Start the rounds';
     else if (mode === 'wTease') nextLabel = '✦ Reveal the winner';
     else if (mode === 'wShown') nextLabel = win && win.i + 1 >= win.n ? 'Show all the winners' : 'Next award';
     else if (mode === 'wFinale' && !(s && s.busy)) nextLabel = '🎆 More fireworks';
@@ -379,16 +398,17 @@ const Console = {
     byId('csRedo').disabled = !on || !(r && r.team.length);
     byId('csEndRound').disabled = !on || !(r && r.committed);
     byId('csEndStage').disabled = !on || opening || !s || s.stageIdx < 0;
+    byId('csGroupAll').hidden = !(on && ['groupDraw', 'groupRolling'].includes(mode));
 
     let notes = e.notes, notesFor = 'the opening';
     if (mode === 'stageInfo' && e.stages[s.info]) { notes = e.stages[s.info].notes; notesFor = e.stages[s.info].name; }
     else if (s && !opening && e.stages[s.stageIdx]) { notes = e.stages[s.stageIdx].notes; notesFor = e.stages[s.stageIdx].name; }
     this.set('csNotes', `<div class="muted small">Notes for ${esc(notesFor)}</div>${notes ? `<div class="cs-notes-text">${esc(notes)}</div>` : '<div class="muted">No notes. Add them in the Structure tab.</div>'}`);
 
-    const st = this.currentStage(), f = stageFormat(st);
-    const done = S.contesters.filter(c => isDone(c, st.id)).length;
+    const st = this.currentStage(), f = stageFormat(st), ent = stageEntrants(st);
+    const done = ent.filter(c => isDone(c, st.id)).length;
     this.set('csPeople', f
-      ? `<div><b>${S.contesters.length - done}</b> waiting · <b>${done}</b> presented <span class="muted">in ${esc(st.name)}</span></div>
+      ? `<div><b>${ent.length - done}</b> waiting · <b>${done}</b> presented <span class="muted">in ${esc(st.name)}</span></div>
          <button class="btn btn-sm" data-cmd="resetStage" ${on ? '' : 'disabled'}>↺ Mark everyone as waiting</button>`
       : `<div class="muted">${esc(st.name)} has no draws.</div>`);
   },

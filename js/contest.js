@@ -36,9 +36,11 @@ const Contest = (() => {
     mode: null, busy: false, gen: 0, roller: null, round: null,
     pool: [], tpool: [], slot: 0, phaseIdx: -1, tm: null, raf: 0, cd: null, cdFn: null, menu: false, f: null,
     remote: false, stageIdx: -1, explainOnly: false, revealed: 0, info: -1,
-    score: null, win: null,
+    score: null, win: null, qualShownFor: new Set(), qualFor: null, gd: null,
   };
   const E = () => S.event;
+  /** One more than the highest round number (rounds can be deleted, so not the count). */
+  const nextRoundNum = () => S.history.reduce((m, h) => Math.max(m, +h.round || 0), 0) + 1;
   const stageNow = () => E().stages[st.stageIdx];
   const deck = () => stageDeck(stageNow());
   /** Tell the presenter window that saved data changed. */
@@ -123,7 +125,7 @@ const Contest = (() => {
   function ctx(extra = {}) {
     const r = st.round, team = r ? r.team : [];
     return {
-      round: r ? r.num : S.history.length + 1,
+      round: r ? r.num : nextRoundNum(),
       name: team[0]?.name || '', last: team[team.length - 1]?.name || '',
       team: team.map(c => c.name).join(' & '),
       n: r ? Math.min(r.tickets.length + 1, r.tcount || 1) : 1, total: r ? r.tcount : F().ticketCount,
@@ -131,12 +133,14 @@ const Contest = (() => {
     };
   }
   const T = (text, extra) => fill(text, ctx(extra));
-  const roleOf = i => (F().slots[i] && F().slots[i].role) || `Person ${i + 1}`;
+  const roleOf = i => (st.round && st.round.group != null ? groupName(st.round.group)
+    : (F().slots[i] && F().slots[i].role) || `Person ${i + 1}`);
   const tLabel = () => F().ticketLabel || 'Ticket';
 
   function buildSteps() {
     const f = F(), r = st.round, steps = [];
-    f.slots.forEach((s, i) => steps.push({ key: 'p' + i, label: roleOf(i) }));
+    if (r.group != null) steps.push({ key: 'g', label: groupName(r.group) });
+    else f.slots.forEach((s, i) => steps.push({ key: 'p' + i, label: roleOf(i) }));
     if (r.tcount > 0) steps.push({ key: 't', label: tLabel() + (r.tcount > 1 ? (f.ticketFlow === 'each' ? ` 1/${r.tcount}` : ` ×${r.tcount}`) : '') });
     f.phases.forEach((p, i) => steps.push({ key: 'ph' + i, label: p.name, color: p.color }));
     if (scoringOn()) steps.push({ key: 'sc', label: 'Score' });
@@ -237,7 +241,15 @@ const Contest = (() => {
       case 'stageEnd': return runStage(st.stageIdx + 1);
       case 'intro':
         if (!TitleFX.done()) return TitleFX.finish();
-        return st.explainOnly ? stageEnd() : newRound();
+        return st.explainOnly ? stageEnd() : stageStart();
+      case 'qualifyShown': {
+        const cur = stageNow();
+        if (cur && st.qualFor === cur.id) return stageStart();   // shown at the start of the stage itself
+        if (cur) return stageEnd();                               // shown at the end of the stage before
+        return runStage(stageIndex(st.qualFor));
+      }
+      case 'groupDraw': return groupDrawNext(false);
+      case 'groupsDone': return newRound();
       case 'roll': return stopRoll();
       case 'revealed': return nextMember();
       case 'teamShown': return afterTeam();
@@ -249,7 +261,7 @@ const Contest = (() => {
       case 'phaseWait': return startPhase(st.phaseIdx + 1);
       case 'done': return newRound();
       case 'scoreWait': return st.remote ? null : openScoreEntry();
-      case 'rankingShown': return stageEnd();
+      case 'rankingShown': return stageFinish();
       case 'scoreShown': return st.score.idx + 1 < st.round.team.length ? scoreWait(st.score.idx + 1) : newRound();
       case 'wTitle': return TitleFX.done() ? winnerTease(0) : TitleFX.finish();
       case 'wTease': return winnerReveal();
@@ -526,11 +538,31 @@ const Contest = (() => {
     message(E().endTitle || 'Thank you!', E().title, [{ label: '✕ Back to dashboard', fn: close }], 'final');
   }
 
+  /** After the stage title: who qualified, then the group draw, then the rounds. */
+  function stageStart() {
+    const s = stageNow();
+    if (s.entry === 'top' && !stageEntrants(s).length) {
+      return message('Nobody has qualified yet', `${s.name} takes the best scorers of ${qualStages(s).map(x => x.name).join(', ') || 'earlier stages'}, but there are no scores from those stages yet.`,
+        [{ label: '✕ Back to dashboard', fn: close }], 'final');
+    }
+    if (s.entry === 'top' && !st.qualShownFor.has(s.id)) return showQualifiers(s);
+    if (s.groups && !stageGroups(s)) return groupDraw();
+    newRound();
+  }
+
   function newRound() {
     reset();
+    const s = stageNow(), groups = s && s.groups ? stageGroups(s) : null;
+    if (groups) {
+      const gi = groups.findIndex(g => g.some(c => !isDone(c)));
+      if (gi < 0) return rankingOrEnd();
+      st.round = { num: nextRoundNum(), team: groups[gi].slice(), tickets: [], tcount: Math.min(F().ticketCount, deck().length), committed: false, group: gi };
+      buildSteps();
+      return showTeam();
+    }
     const pool = waiting();
     if (!pool.length) return rankingOrEnd();
-    st.round = { num: S.history.length + 1, team: [], tickets: [], tcount: Math.min(F().ticketCount, deck().length), committed: false };
+    st.round = { num: nextRoundNum(), team: [], tickets: [], tcount: Math.min(F().ticketCount, deck().length), committed: false };
     buildSteps();
     startRoll(0, pool);
   }
@@ -668,7 +700,7 @@ const Contest = (() => {
     const ids = new Set(st.round.team.map(c => c.id));
     let list = waiting().filter(c => !ids.has(c.id)), fromDone = false;
     if (!list.length && F().fillFromDone) {
-      list = S.contesters.filter(c => !ids.has(c.id));
+      list = stageEntrants(stageNow()).filter(c => !ids.has(c.id));
       fromDone = list.length > 0;
     }
     return { list, fromDone };
@@ -685,18 +717,18 @@ const Contest = (() => {
   async function showTeam() {
     const g = st.gen;
     st.busy = true; st.mode = 'team';
-    const { team } = st.round, n = team.length, f = F();
+    const { team } = st.round, n = team.length, f = F(), grp = st.round.group != null;
     byId('pairLabel').textContent = T(f.roundLabel);
-    byId('pairTitle').textContent = T(f.teamTitle);
-    byId('pairNote').textContent = n < f.teamSize ? `Only ${n} of ${f.teamSize} could be drawn: there are not enough contesters` : '';
+    byId('pairTitle').textContent = grp ? groupName(st.round.group) : T(f.teamTitle);
+    byId('pairNote').textContent = !grp && n < f.teamSize ? `Only ${n} of ${f.teamSize} could be drawn: there are not enough contesters` : '';
     const side = i => (i * 2 + 1 < n ? 'pa' : i * 2 + 1 > n ? 'pb' : 'pm');
     const link = '<div class="pair-link"><div class="beam"></div><div class="amp">&amp;</div></div>';
     const row = byId('pairRow');
     row.className = `pair-row n${Math.min(n, 6)}`;
-    row.innerHTML = team.map((c, i) => `<div class="pair-slot ${side(i)}">${personCard(c, n > 1 ? roleOf(i) : '')}</div>`).join(link);
+    row.innerHTML = team.map((c, i) => `<div class="pair-slot ${side(i)}">${personCard(c, n > 1 && !grp ? roleOf(i) : '')}</div>`).join(link);
     byId('scrPair').classList.toggle('solo', n === 1);
     byId('pairPrompt').textContent = '';
-    setStep('p' + (n - 1));
+    setStep(grp ? 'g' : 'p' + (n - 1));
     FX.stopEmitters();
     replay('scrPair'); show('scrPair');
     Sound.whoosh();
@@ -1236,7 +1268,14 @@ const Contest = (() => {
   function rankingOrEnd() {
     const s = stageNow();
     const list = s && scoringOn() ? stageRanking(s.id) : [];
-    return list.length ? showRanking(list) : stageEnd();
+    return list.length ? showRanking(list) : stageFinish();
+  }
+
+  /** A stage is over. When the next stage takes only the top scorers, announce who goes through first. */
+  function stageFinish() {
+    const nx = E().stages[st.stageIdx + 1];
+    if (nx && nx.entry === 'top' && stageEntrants(nx).length) return showQualifiers(nx);
+    stageEnd();
   }
 
   async function showRanking(list) {
@@ -1363,6 +1402,197 @@ const Contest = (() => {
     st.busy = false;
   }
 
+  /* ---------------- qualifiers ---------------- */
+  /** Who goes through to this stage: their cards appear from the last qualifier up to the best. */
+  async function showQualifiers(s = stageNow()) {
+    reset();
+    stepsOn(false);
+    st.qualShownFor.add(s.id);
+    st.qualFor = s.id;
+    const q = qualification(s), g = st.gen;
+    const list = q.ins, n = list.length, from = q.from;
+    byId('qLabel').textContent = `Stage ${stageIndex(s.id) + 1} · ${s.name}`;
+    byId('qTitle').textContent = `Qualified for ${s.name}`;
+    byId('qRule').textContent = `${n} of ${q.list.length} · ${qualRuleText(s)}`;
+    const cols = n <= 4 ? n : n <= 8 ? 4 : n <= 12 ? 6 : n <= 18 ? 6 : 8;
+    const grid = byId('qGrid');
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    grid.style.setProperty('--rows', Math.ceil(n / cols));
+    grid.innerHTML = list.map((x, k) => `
+      <div class="q-card" style="--k:${k}">
+        <div class="q-rank">${x.rank}</div>
+        <div class="q-photo"><img src="${esc(avatarFor(x.c))}" alt=""></div>
+        <div class="q-name">${esc(x.c.name)}</div>
+        <div class="q-parts">${from.map((f, j) => `<span title="${esc(f.name)}">${esc(f.icon)} ${x.parts[j] == null ? '–' : x.parts[j].toFixed(2)}</span>`).join('')}</div>
+        <div class="q-value">${x.value.toFixed(2)}</div>
+      </div>`).join('');
+    byId('qPrompt').textContent = '';
+    replay('scrQualify'); show('scrQualify');
+    FX.warpTo(0.15);
+    Sound.whoosh();
+    st.mode = 'qualify';
+    st.busy = true;
+    await wait(1000);
+    const cards = $$('#qGrid .q-card');
+    for (let k = cards.length - 1; k >= 0; k--) {
+      if (g !== st.gen) return;
+      const c = cards[k];
+      c.classList.add('in');
+      const [x, y] = center(c);
+      if (k === 0) {
+        Sound.rise();
+        await wait(350);
+        if (g !== st.gen) return;
+        flash(0.5);
+        Sound.boom(); Sound.chime();
+        FX.shockwave(x, y);
+        FX.burst(x, y, { count: 160, speed: [2, 13], gravity: 0.04 });
+        FX.burst(x, y, { count: 40, shape: 'star', colors: FX.GOLD, speed: [1, 7], gravity: 0.015 });
+      } else {
+        Sound.lock();
+        FX.burst(x, y, { count: 50, speed: [2, 8], gravity: 0.05 });
+      }
+      await wait(Math.max(180, Math.min(700, 4200 / cards.length)));
+    }
+    if (g !== st.gen) return;
+    Sound.fanfare();
+    FX.confetti(3500);
+    cards.forEach(c => FX.sparkle(c.querySelector('.q-photo'), 5000));
+    await wait(900);
+    if (g !== st.gen) return;
+    const here = stageNow() && stageNow().id === s.id;
+    byId('qPrompt').innerHTML = `<span class="key">⌨</span> ${!here ? 'Click to continue' : s.groups && !stageGroups(s) ? 'Click to draw the groups' : `Click to start ${esc(s.name)}`}`;
+    st.mode = 'qualifyShown';
+    st.busy = false;
+  }
+
+  /* ---------------- random groups ---------------- */
+  /** The group draw: each click picks a random person and sends them to the next group, in turn. */
+  function groupDraw() {
+    reset();
+    stepsOn(false);
+    const s = stageNow(), people = stageEntrants(s).slice(), sizes = groupSizes(s, people.length);
+    const seq = [];
+    for (let r = 0; r < Math.max(...sizes); r++) sizes.forEach((n, gi) => { if (r < n) seq.push(gi); });
+    st.gd = { pool: people, groups: sizes.map(() => []), sizes, seq, k: 0 };
+    byId('gdLabel').textContent = `Stage ${st.stageIdx + 1} · ${s.name}`;
+    const pool = byId('gdPool');
+    const pp = people.length <= 8 ? 12 : people.length <= 16 ? 9 : people.length <= 30 ? 7 : 5.5;
+    pool.style.setProperty('--pp', `${pp}vh`);
+    pool.innerHTML = people.map((c, k) => `<div class="gd-p" data-id="${c.id}" style="--k:${k}"><img src="${esc(avatarFor(c))}" alt=""><span>${esc(c.name)}</span></div>`).join('');
+    const box = byId('gdGroups');
+    const maxSize = Math.max(...sizes);
+    box.style.setProperty('--gs', `${Math.max(3.6, Math.min(8, 34 / maxSize))}vh`);
+    box.style.gridTemplateColumns = `repeat(${Math.min(sizes.length, 6)}, minmax(0, 1fr))`;
+    box.innerHTML = sizes.map((n, gi) => `
+      <div class="gd-group" data-g="${gi}" style="--k:${gi}">
+        <div class="gd-gname">${groupName(gi)}</div>
+        <div class="gd-slots">${Array.from({ length: n }, () => '<div class="gd-slot"><i>?</i></div>').join('')}</div>
+      </div>`).join('');
+    byId('gdPrompt').innerHTML = `<span class="key">⌨</span> Click to draw the first member of ${groupName(0)}`;
+    replay('scrGroupDraw'); show('scrGroupDraw');
+    FX.warpTo(0.2);
+    Sound.whoosh();
+    st.mode = 'groupDraw';
+  }
+
+  async function groupDrawNext(fast) {
+    const gd = st.gd, g = st.gen;
+    if (!gd || gd.k >= gd.seq.length) return;
+    st.busy = true; st.mode = 'groupRolling';
+    byId('gdPrompt').textContent = '';
+    const gi = gd.seq[gd.k];
+    const chosen = pick(gd.pool);
+    const els = () => $$('#gdPool .gd-p:not(.gone)');
+    // the highlight runs over the pool, slowing down, and stops on the chosen person
+    if (gd.pool.length > 1) {
+      const steps = fast ? 6 : 22;
+      let el = null;
+      for (let i = 0; i < steps; i++) {
+        if (g !== st.gen) return;
+        const all = els();
+        const c = i === steps - 1 ? all.find(e => e.dataset.id === chosen.id) : all[Math.floor(Math.random() * all.length)];
+        if (el) el.classList.remove('hot');
+        el = c; el.classList.add('hot');
+        Sound.tick();
+        await wait(fast ? 45 : 40 + Math.pow(i / steps, 3) * 320);
+      }
+    }
+    if (g !== st.gen) return;
+    const from = $(`#gdPool .gd-p[data-id="${chosen.id}"]`);
+    from.classList.add('hot', 'picked');
+    Sound.lock();
+    const [px, py] = center(from);
+    FX.burst(px, py, { count: 40, speed: [1, 6], colors: FX.GOLD, gravity: 0.02 });
+    await wait(fast ? 120 : 420);
+    if (g !== st.gen) return;
+
+    // fly the photo into its group's next empty slot
+    const group = gd.groups[gi];
+    const slot = $$(`#gdGroups [data-g="${gi}"] .gd-slot`)[group.length];
+    const a = from.querySelector('img').getBoundingClientRect(), b = slot.getBoundingClientRect();
+    const fly = document.createElement('img');
+    fly.className = 'gd-fly';
+    fly.src = avatarFor(chosen);
+    Object.assign(fly.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px` });
+    byId('screens').appendChild(fly);
+    from.classList.add('gone');
+    Sound.whoosh();
+    const bs = Math.min(b.width, b.height);
+    await fly.animate([
+      { transform: 'none' },
+      { transform: `translate(${(b.left - a.left) * 0.5}px, ${(b.top - a.top) * 0.5 - 80}px) scale(1.4)`, offset: 0.45 },
+      { transform: `translate(${b.left + bs / 2 - a.left - a.width / 2}px, ${b.top + b.height / 2 - a.top - a.height / 2}px) scale(${bs / a.width})` },
+    ], { duration: fast ? 420 : 900, easing: 'cubic-bezier(.3,.7,.3,1)' }).finished.catch(() => {});
+    fly.remove();
+    if (g !== st.gen) return;
+    group.push(chosen);
+    gd.pool = gd.pool.filter(c => c.id !== chosen.id);
+    gd.k++;
+    slot.classList.add('filled');
+    slot.innerHTML = `<img src="${esc(avatarFor(chosen))}" alt=""><span>${esc(chosen.name)}</span>`;
+    const [sx, sy] = center(slot.querySelector('img'));
+    Sound.chime();
+    FX.shockwave(sx, sy, { max: 90, dur: 0.6, width: 2 });
+    FX.burst(sx, sy, { count: 70, speed: [2, 9], gravity: 0.05 });
+
+    if (gd.k >= gd.seq.length) return groupsDone(g);
+    st.busy = false;
+    if (st.gd.auto) return groupDrawNext(true);
+    st.mode = 'groupDraw';
+    byId('gdPrompt').innerHTML = `<span class="key">⌨</span> Click to draw the next member of ${groupName(gd.seq[gd.k])}`;
+  }
+
+  async function groupsDone(g) {
+    const s = stageNow(), gd = st.gd;
+    S.groups[s.id] = gd.groups.map(gr => gr.map(c => c.id));
+    try { await saveGroups(); } catch (e) { console.error(e); }
+    saved();
+    await wait(500);
+    if (g !== st.gen) return;
+    flash(0.6);
+    Sound.boom(); Sound.fanfare();
+    FX.confetti(4000);
+    $$('#gdGroups .gd-group').forEach(el => {
+      el.classList.add('done');
+      const [x, y] = center(el);
+      FX.burst(x, y, { count: 90, speed: [2, 11], gravity: 0.05 });
+    });
+    byId('gdPool').classList.add('empty');
+    await wait(1200);
+    if (g !== st.gen) return;
+    byId('gdPrompt').innerHTML = `<span class="key">⌨</span> Click to start ${esc(s.name)} with ${esc(groupName(0))}`;
+    st.mode = 'groupsDone';
+    st.busy = false;
+  }
+
+  /** Console: draw everyone left, quickly. */
+  function groupDrawAll() {
+    if (!st.gd || !['groupDraw', 'groupRolling'].includes(st.mode)) return;
+    st.gd.auto = true;
+    if (st.mode === 'groupDraw') groupDrawNext(true);
+  }
+
   /* ---------------- winners ceremony ---------------- */
   const medalOf = a => MEDALS[a.medal] || MEDALS.gold;
 
@@ -1385,30 +1615,27 @@ const Contest = (() => {
   function winnerScoresHTML(a, ppl) {
     if (!S.winners.showScores) return '';
     const recs = ppl.map(c => ({ c, r: personRecord(c.id) }));
-    if (!recs.some(x => x.r.overall != null)) return '';
+    if (!recs.some(x => x.r.stages.length)) return '';
     const num = v => `<b class="wn-v" data-to="${v == null ? '' : v}">${v == null ? '–' : '0.00'}</b>`;
-    let rows, total, totalLabel;
+    let rows;
     if (a.kind === 'person') {
-      const r = recs[0].r;
-      rows = r.stages.map(s => `
+      // one row per stage: the judges' scores and the score of that stage
+      rows = recs[0].r.stages.map(s => `
         <div class="wn-row">
           <span class="wn-l"><i>${esc(s.icon)}</i>${esc(s.name)}</span>
           <span class="wn-js">${s.rounds.map(rd => rd.scores.map(v => `<em>${esc(fmtScoreW(v))}</em>`).join('')).join('<i class="wn-sep"></i>')}</span>
           ${num(s.avg)}
         </div>`);
-      total = r.overall; totalLabel = r.stages.length > 1 ? 'Overall average' : 'Average score';
     } else {
+      // one row per member: their score in each stage
       rows = recs.map(({ c, r }) => `
-        <div class="wn-row">
+        <div class="wn-row wn-mem">
           <span class="wn-l"><img src="${esc(avatarFor(c))}" alt="">${esc(c.name)}</span>
-          <span class="wn-js">${r.stages.map(s => `<em title="${esc(s.name)}">${esc(s.icon)} ${fmtAvg(s.avg)}</em>`).join('')}</span>
-          ${num(r.overall)}
+          <span class="wn-js">${r.stages.map(s => `<em title="${esc(s.name)}">${esc(s.icon)} <b>${fmtAvg(s.avg)}</b></em>`).join('') || '<em>–</em>'}</span>
         </div>`);
-      total = meanOf(recs.map(x => x.r.overall).filter(v => v != null)); totalLabel = 'Team average';
     }
-    return `<div class="wn-sh">✦ Scores from the rounds ✦</div>
-      <div class="wn-rows n${Math.min(rows.length, 6)}">${rows.map((h, k) => h.replace('class="wn-row"', `class="wn-row" style="--k:${k}"`)).join('')}</div>
-      <div class="wn-total"><span>${totalLabel}</span>${num(total)}</div>`;
+    return `<div class="wn-sh">✦ Scores from each stage ✦</div>
+      <div class="wn-rows n${Math.min(rows.length, 6)}">${rows.map((h, k) => h.replace(/class="wn-row([^"]*)"/, `class="wn-row$1" style="--k:${k}"`)).join('')}</div>`;
   }
   const fmtScoreW = v => (Number.isInteger(v) ? String(v) : String(+(+v).toFixed(2)));
 
@@ -1491,7 +1718,7 @@ const Contest = (() => {
         row.classList.add('in');
         Sound.lock();
         const v = row.querySelector('.wn-v');
-        if (v.dataset.to !== '') countUp(v, +v.dataset.to, 2, 650);
+        if (v && v.dataset.to !== '') countUp(v, +v.dataset.to, 2, 650);
         await wait(Math.max(260, Math.min(650, 2600 / rows.length)));
       }
       const tot = $('#wnScores .wn-total');
@@ -1549,14 +1776,14 @@ const Contest = (() => {
     grid.style.setProperty('--rows', Math.ceil(n / cols));
     grid.className = `wf-grid c${cols}`;
     grid.innerHTML = list.map((a, k) => {
-      const ppl = awardPeople(a), ov = meanOf(ppl.map(c => personRecord(c.id).overall).filter(v => v != null));
+      const ppl = awardPeople(a), stages = a.kind === 'person' && ppl[0] ? personRecord(ppl[0].id).stages : [];
       return `<div class="wf-card" data-medal="${a.medal}" style="--k:${k}">
         <div class="wf-medal">${medalOf(a).icon}</div>
         <div class="wf-award">${esc(a.title)}</div>
         <div class="wf-photos n${Math.min(ppl.length, 6)}">${ppl.map(c => `<img src="${esc(avatarFor(c))}" alt="">`).join('')}</div>
         <div class="wf-name">${esc(awardName(a))}</div>
         ${a.kind === 'group' && a.team.trim() ? `<div class="wf-members">${ppl.map(c => esc(c.name)).join(' · ')}</div>` : ''}
-        ${S.winners.showScores && ov != null ? `<div class="wf-score">${fmtAvg(ov)}</div>` : ''}
+        ${S.winners.showScores && stages.length ? `<div class="wf-score">${stages.map(s => `<span title="${esc(s.name)}">${esc(s.icon)} ${fmtAvg(s.avg)}</span>`).join('')}</div>` : ''}
       </div>`;
     }).join('');
     byId('wfPrompt').textContent = '';
@@ -1609,9 +1836,27 @@ const Contest = (() => {
       case 'timer': if (st.mode === 'timer' && !st.busy) timerKey(c.k); return;
       case 'redo': return redoRound();
       case 'endRound': return endRoundNow();
-      case 'endStage': return st.stageIdx < 0 ? null : st.mode === 'rankingShown' ? stageEnd() : rankingOrEnd();
+      case 'endStage':
+        if (st.stageIdx < 0) return null;
+        if (['qualify', 'qualifyShown'].includes(st.mode)) return st.qualFor === stageNow().id ? stageStart() : stageEnd();
+        return st.mode === 'rankingShown' ? stageFinish() : rankingOrEnd();
       case 'standby': return standby();
       case 'winners': return winners();
+      case 'groupAll': return groupDrawAll();
+      case 'groupDraw': {
+        const s = E().stages[c.i];
+        if (!s || !s.groups) return;
+        delete S.groups[s.id];
+        saveGroups().then(saved);
+        if (st.stageIdx !== c.i) return runStage(c.i);
+        st.qualShownFor.add(s.id);
+        return stageStart();
+      }
+      case 'qualifiers': {
+        const s = E().stages[c.i];
+        if (!s || s.entry !== 'top' || !stageEntrants(s).length) return;
+        return showQualifiers(s);
+      }
       case 'winnerAt':
         st.stageIdx = -1; st.round = null;
         st.win = { list: winnersOrder(), i: -1 };
@@ -1654,6 +1899,11 @@ const Contest = (() => {
       case 'ranking': return `${stage}Showing the ranking…`;
       case 'rankingShown': return `${stage}Ranking on screen`;
       case 'final': return 'Final screen';
+      case 'qualify': return `${stage}Showing who qualified for ${E().stages[stageIndex(st.qualFor)]?.name || ''}…`;
+      case 'qualifyShown': return `${stage}Qualified for ${E().stages[stageIndex(st.qualFor)]?.name || ''} on screen`;
+      case 'groupDraw': return `${stage}Group draw: ${st.gd.k} of ${st.gd.seq.length} placed`;
+      case 'groupRolling': return `${stage}Group draw: drawing for ${groupName(st.gd.seq[st.gd.k] ?? 0)}…`;
+      case 'groupsDone': return `${stage}Groups drawn`;
       case 'wTitle': return 'Winners · Title';
       case 'wTease': return `Winners · Award ${st.win.i + 1} of ${st.win.list.length}: ${st.win.list[st.win.i].title} (winner hidden)`;
       case 'wRevealing': return `Winners · Revealing ${st.win.list[st.win.i].title}…`;

@@ -8,10 +8,10 @@ const DEFAULT_SETTINGS = {
 };
 
 /** In-memory state (mirrored to IndexedDB). */
-const S = { contesters: [], tickets: [], settings: { ...DEFAULT_SETTINGS }, format: null, templates: [], history: [], event: null, activeStage: '', winners: normalizeWinners() };
+const S = { contesters: [], tickets: [], settings: { ...DEFAULT_SETTINGS }, format: null, templates: [], history: [], event: null, activeStage: '', winners: normalizeWinners(), groups: {} };
 
 /** Contesters who have not presented yet in the active stage. */
-const waiting = () => S.contesters.filter(c => !isDone(c));
+const waiting = () => stageEntrants(curStage()).filter(c => !isDone(c));
 const saveEvent = () => DB.set('event', S.event);
 const saveActiveStage = () => DB.set('activeStage', S.activeStage);
 const saveSettings = () => DB.set('settings', S.settings);
@@ -201,20 +201,21 @@ const ContestersUI = {
   render() {
     const q = byId('cSearch').value.trim().toLowerCase();
     const list = S.contesters.filter(c => !q || c.name.toLowerCase().includes(q) || String(c.num).includes(q));
-    const w = waiting().length;
-    byId('cCount').textContent = `(${S.contesters.length} total · ${w} waiting)`;
+    const w = waiting().length, st = curStage(), ent = new Set(stageEntrants(st).map(c => c.id));
+    const out = S.contesters.length - ent.size;
+    byId('cCount').textContent = `(${S.contesters.length} total · ${w} waiting${out ? ` · ${out} not qualified for ${st.name}` : ''})`;
     const grid = byId('cGrid');
     if (!S.contesters.length) {
       grid.innerHTML = '<div class="empty-state">No contesters yet. Register the first one above.</div>';
       return;
     }
     grid.innerHTML = list.map(c => `
-      <div class="card c-card ${isDone(c) ? 'is-done' : ''}" data-id="${c.id}">
+      <div class="card c-card ${isDone(c) || !ent.has(c.id) ? 'is-done' : ''}" data-id="${c.id}">
         <div class="c-photo" data-act="view"><img src="${esc(avatarFor(c))}" alt="" loading="lazy"></div>
         <div class="c-body">
           <div class="c-num">#${c.num}</div>
           <div class="c-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <span class="badge ${isDone(c) ? 'done' : 'wait'}">${isDone(c) ? '✓ Presented' : '● Waiting'}</span>
+          ${ent.has(c.id) ? `<span class="badge ${isDone(c) ? 'done' : 'wait'}">${isDone(c) ? '✓ Presented' : '● Waiting'}</span>` : '<span class="badge done">Not qualified</span>'}
         </div>
         <div class="card-actions">
           <button data-act="edit" title="Edit">✎</button>
@@ -501,6 +502,7 @@ const ResultsUI = {
       this.render();
       Admin.header();
     };
+    byId('hBody').addEventListener('click', e => { const b = e.target.closest('[data-del]'); if (b) this.del(b.dataset.del); });
     byId('hExport').onclick = () => {
       const people = Math.max(1, ...S.history.map(h => histTeam(h).length));
       const judges = Math.max(0, ...S.history.flatMap(h => histTeam(h).map(c => (c.scores || []).length)));
@@ -543,9 +545,28 @@ const ResultsUI = {
         <td>${tickets || '<span class="muted">—</span>'}</td>
         <td class="muted">${esc(h.stage || h.format || '')}</td>
         <td class="muted">${new Date(h.at).toLocaleString()}</td>
+        <td><button class="btn btn-sm h-del" data-del="${h.id}" title="Delete this round">🗑</button></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="5" class="muted center">No rounds yet</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="muted center">No rounds yet</td></tr>';
     this.renderRanking();
+  },
+
+  /** Delete one round record (its people and scores). Optionally let its people present again. */
+  async del(id) {
+    const h = S.history.find(x => x.id === id);
+    if (!h) return;
+    const team = histTeam(h), names = team.map(c => `#${c.num} ${c.name}`).join(', ');
+    if (!confirm(`Delete round ${h.round}${h.stage ? ` (${h.stage})` : ''}: ${names || 'nobody'}?\nIts scores are removed from the rankings.`)) return;
+    S.history = S.history.filter(x => x.id !== id);
+    await DB.set('history', S.history);
+    const sid = h.stageId || '', people = team.map(t => S.contesters.find(c => c.id === t.id)).filter(c => c && sid && isDone(c, sid));
+    if (people.length && confirm(`Also mark ${people.map(c => c.name).join(', ')} as waiting again in ${h.stage || 'that stage'}, so they can present again?`)) {
+      people.forEach(c => setDone(c, false, sid));
+      await DB.putMany('contesters', people);
+    }
+    if (typeof Console !== 'undefined' && Console.connected()) Link.send('history');
+    Admin.refreshAll();
+    toast(`Round ${h.round} deleted`);
   },
 
   /** Each stage's people sorted by their average score. */
@@ -587,7 +608,7 @@ const SettingsUI = {
         app: 'contest-manager', version: 2, exported: new Date().toISOString(),
         contesters: S.contesters, tickets: S.tickets, settings: S.settings,
         format: S.format, templates: S.templates, history: S.history,
-        event: S.event, activeStage: S.activeStage, winners: S.winners,
+        event: S.event, activeStage: S.activeStage, winners: S.winners, groups: S.groups,
       };
       download(`contest-backup-${today()}.json`, JSON.stringify(data), 'application/json');
     };
@@ -611,6 +632,7 @@ const SettingsUI = {
           DB.set('event', data.event || null),
           DB.set('activeStage', data.activeStage || ''),
           DB.set('winners', data.winners || null),
+          DB.set('groups', data.groups || {}),
         ]);
         await Admin.loadData();
         this.load(); FormatUI.load(); StructureUI.load(); WinnersUI.load(); Admin.refreshAll();
@@ -708,6 +730,7 @@ const Admin = {
     S.event = event ? normalizeEvent(event) : migrateEvent();
     if (!event) await saveEvent();
     S.winners = normalizeWinners(await DB.get('winners'));
+    S.groups = (await DB.get('groups')) || {};
     S.activeStage = (await DB.get('activeStage')) || '';
     if (!S.event.stages.some(s => s.id === S.activeStage)) S.activeStage = S.event.stages[0].id;
     // tickets from before per-stage ticks: "all stages" → every stage ticked; "used" → used in the active stage
@@ -732,6 +755,7 @@ const Admin = {
     S.contesters = await DB.all('contesters');
     S.tickets = await DB.all('tickets');
     S.history = (await DB.get('history')) || [];
+    S.groups = (await DB.get('groups')) || {};
     S.activeStage = (await DB.get('activeStage')) || S.activeStage;
     ContestersUI.renderStageSelect();
     this.refreshAll();
@@ -783,7 +807,7 @@ const Admin = {
     deck.forEach(t => { if (allStages) t.usedIn = {}; else setUsed(t, false); });
     await DB.putMany('contesters', S.contesters);
     await DB.putMany('tickets', S.tickets);
-    if (clearHistory) { S.history = []; await DB.set('history', S.history); }
+    if (clearHistory) { S.history = []; S.groups = {}; await DB.set('history', S.history); await saveGroups(); }
     this.refreshAll();
   },
 };

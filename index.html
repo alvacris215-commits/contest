@@ -294,7 +294,7 @@
       </div>
       <div class="panel table-panel">
         <table class="table">
-          <thead><tr><th>Round</th><th>People</th><th>Tickets</th><th>Stage</th><th>Time</th></tr></thead>
+          <thead><tr><th>Round</th><th>People</th><th>Tickets</th><th>Stage</th><th>Time</th><th></th></tr></thead>
           <tbody id="hBody"></tbody>
         </table>
       </div>
@@ -305,12 +305,12 @@
     <section class="tab" id="tab-winners">
       <div class="panel">
         <h2>👑 Winners ceremony</h2>
-        <p class="hint">Add the awards, choose who won each one (a person or a group), then click <b>Show the winners</b>. The audience screen reveals the awards one by one, each with the winner's scores from the rounds, and ends with all the winners together.</p>
+        <p class="hint">Add the awards, choose who won each one (a person or a group), then click <b>Show the winners</b>. The audience screen reveals the awards one by one, each with the winner's score in every stage, and ends with all the winners together.</p>
         <div class="settings-grid w-settings">
           <label>Title on screen<input type="text" data-w="title" placeholder="The Winners"></label>
           <label>Last slide, with all the winners<input type="text" data-w="closing" placeholder="Congratulations!"></label>
           <label class="check"><input type="checkbox" data-w="revealUp"> Reveal from the bottom of the list up, so the first award comes last</label>
-          <label class="check"><input type="checkbox" data-w="showScores"> Show each winner's scores from the rounds</label>
+          <label class="check"><input type="checkbox" data-w="showScores"> Show each winner's score in every stage</label>
         </div>
         <div class="btn-row w-go">
           <button class="btn btn-gold btn-lg" id="wShow">✦ Show the winners</button>
@@ -446,6 +446,7 @@
         <button class="btn btn-sm" id="csRedo" data-cmd="redo">↺ Redo this round</button>
         <button class="btn btn-sm" id="csEndRound" data-cmd="endRound">⏹ End this round</button>
         <button class="btn btn-sm" id="csEndStage" data-cmd="endStage">⏭ End this stage</button>
+        <button class="btn btn-sm btn-gold" id="csGroupAll" data-cmd="groupAll" hidden>⏩ Draw all the rest</button>
       </div>
     </section>
     <aside class="cs-col">
@@ -638,6 +639,23 @@
       <div class="podium" id="rkPodium"></div>
       <div class="rank-rest" id="rkRest"></div>
       <div class="prompt" id="rkPrompt"></div>
+    </section>
+
+    <section class="scr" id="scrQualify">
+      <div class="wn-beams"><i></i><i></i></div>
+      <div class="round-label" id="qLabel"></div>
+      <h2 class="scr-title" id="qTitle"></h2>
+      <div class="q-rule" id="qRule"></div>
+      <div class="q-grid" id="qGrid"></div>
+      <div class="prompt" id="qPrompt"></div>
+    </section>
+
+    <section class="scr" id="scrGroupDraw">
+      <div class="round-label" id="gdLabel"></div>
+      <h2 class="scr-title">Group draw</h2>
+      <div class="gd-pool" id="gdPool"></div>
+      <div class="gd-groups" id="gdGroups"></div>
+      <div class="prompt" id="gdPrompt"></div>
     </section>
 
     <section class="scr" id="scrWinner">

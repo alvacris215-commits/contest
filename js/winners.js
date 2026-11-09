@@ -262,7 +262,7 @@ const WinnersUI = {
     if (!ppl.length) return '';
     const rows = ppl.map(c => {
       const r = personRecord(c.id);
-      return `<div class="a-sc"><b>#${c.num} ${esc(c.name)}</b> ${r.stages.map(s => `<span>${esc(s.icon)} ${esc(s.name)} <b>${fmtAvg(s.avg)}</b></span>`).join('') || '<span class="muted">no scores yet</span>'}${r.overall != null ? `<span class="a-ov">Overall <b>${fmtAvg(r.overall)}</b></span>` : ''}</div>`;
+      return `<div class="a-sc"><b>#${c.num} ${esc(c.name)}</b> ${r.stages.map(s => `<span>${esc(s.icon)} ${esc(s.name)} <b>${fmtAvg(s.avg)}</b></span>`).join('') || '<span class="muted">no scores yet</span>'}</div>`;
     }).join('');
     return `<span class="muted small">Scores shown on screen</span>${rows}`;
   },
